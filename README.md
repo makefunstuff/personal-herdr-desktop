@@ -42,7 +42,8 @@ submit them as one review; CHECKS lists failing ones first. ASK sends a comment 
 **Reviews** (`mods/px-reviews`): PRs waiting for your review, assigned to you, reviewed by you and your own, from one
 GitHub query; a toast for new requests; REVIEW hands one to the agent for a summary and draft comments.
 
-**Changes** (`mods/px-changes`): the working tree's diff with line and file comments that go to the pane's agent.
+**Changes** (`mods/px-changes`): the working tree's diff with line and file comments that go to the pane's agent; a
+line number (or a file's `nvim` button) opens it there in Neovim: in the space's `nvim` tab when it has one, else a new one.
 
 **Docs** (`mods/px-doc`, `herdr-doc`): investigation notes, runbooks and drafts as `herdr.doc/2` JSON
 ([spec](herdr-app/mods/px-doc/SPEC.md)) drawn natively in the Docs panel: callouts, findings with evidence, timelines,

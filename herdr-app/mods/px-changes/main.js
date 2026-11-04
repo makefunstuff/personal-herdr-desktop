@@ -21,6 +21,30 @@ const key = () => JSON.stringify(location());
 // Reads write nothing under .git (no index refresh or lock, no fsmonitor cookie):
 // the folder watch would see it, and every refresh would start the next one.
 const READ = ["--no-optional-locks", "-c", "core.fsmonitor=false", "-c", "diff.autoRefreshIndex=false"];
+// Opens a changed file in Neovim at a line: the space's "nvim" tab when it has one (its running Neovim through
+// its server socket, or `nvim +LINE file` typed into its idle shell), else a new "nvim" tab. Line 0: the file's
+// first changed line. Prints "tab" or "new".
+const NVIM_OPEN = String.raw`
+root="$1"; rel="$2"; line="$3"; space="$4"; f="$root/$rel"
+case "$line" in ''|0|*[!0-9]*) line=$(git -C "$root" diff -U0 HEAD -- "$rel" 2>/dev/null | sed -n 's/^@@ [^+]*+\([0-9]*\).*/\1/p' | head -1) ;; esac
+[ -n "$line" ] && [ "$line" -gt 0 ] 2>/dev/null || line=1
+tab=$(herdr-app ls | jq -r --arg s "$space" '.spaces[] | select(.id == $s) | .tabs[] | select(.name == "nvim") | "\(.id) \(.terminals[0].terminal // "")"' | head -1)
+tid=$(echo "$tab" | cut -d" " -f1); term=$(echo "$tab" | cut -s -d" " -f2)
+newtab() { herdr-app do tab.new --name nvim --space "$space" --folder "$root" --argv "$(jq -cn --arg l "+$line" --arg f "$f" '["nvim", $l, $f]')" >/dev/null && echo new; }
+[ -n "$tid" ] && [ -n "$term" ] || { newtab; exit; }
+pid=$(hc get "$term" | jq -r '.pid // empty')
+kids() { for k in $(pgrep -P "$1"); do echo "$k"; kids "$k"; done; }
+rt=$XDG_RUNTIME_DIR; [ -n "$rt" ] || rt=/run/user/$(id -u)
+sock=""; for p in $pid $(kids "$pid"); do [ -S "$rt/nvim.$p.0" ] && { sock="$rt/nvim.$p.0"; break; }; done
+if [ -n "$sock" ]; then
+  q=$(printf "%s" "$f" | sed "s/'/''/g")
+  nvim --server "$sock" --remote-send '<C-\><C-N>' >/dev/null 2>&1
+  nvim --server "$sock" --remote-expr "execute('edit +$line ' . fnameescape('$q'))" >/dev/null || { newtab; exit; }
+elif [ -z "$(pgrep -P "$pid")" ]; then
+  hc send "$term" "nvim +$line '$(printf %s "$f" | sed "s/'/'\\\\''/g")'" >/dev/null
+else newtab; exit; fi
+herdr-app do tab.select --id "$tid" >/dev/null; echo tab
+`;
 const countLines = (text) => text ? text.split("\n").length - Number(text.endsWith("\n")) : 0;
 
 // Numbers each diff line once, so a frame only draws the rows on screen.
@@ -163,6 +187,16 @@ export default class Changes extends View {
     cx.notify();
   }
 
+  // Neovim at that line (0: the first change), in this space's nvim tab or a new one.
+  openInNvim(path, line, cx) {
+    const space = spaces().find((s) => s.active);
+    if (!this.root || !space || space.machine) { this.note = "Opens in Neovim only on this computer."; cx.notify(); return; }
+    cx.spawn(async (cx) => {
+      const r = await exec("sh", ["-c", NVIM_OPEN, "sh", this.root, path, String(line ?? 0), space.id]).catch((e) => ({ code: 1, stderr: String(e) }));
+      if (r.code) { this.note = `Neovim didn't open: ${String(r.stderr || r.stdout).trim().split("\n").pop()}`; cx.notify(); }
+    });
+  }
+
   pickLine(row, cx) {
     if (!this.open || row.number === undefined) return;
     const t = { path: this.open, line: row.number, side: row.kind === "-" ? "old" : "new", code: row.text.trim().slice(0, 160) };
@@ -271,7 +305,11 @@ export default class Changes extends View {
     return h_flex().id(`dl-${i}`).w_full().h(20).flex_none().gap(10).when(kind === "+", (e) => e.bg(t.ansi2 + "18")).when(kind === "-", (e) => e.bg(t.ansi1 + "18"))
       .when(number !== undefined, (e) => e.cursor_pointer().hover((s) => s.bg(t.hover)).on_click((_e, cx) => this.pickLine(row, cx)))
       .when(Boolean(picked), (e) => e.bg(alpha(t.accent, "33")))
-      .child(div().w(30).flex_none().text_right().text_color(picked ? t.accent : t.dim).child(number === undefined ? "" : String(number)))
+      // The line number opens the file there in Neovim; the rest of the line comments on it.
+      .child(div().id(`dn-${i}`).w(30).flex_none().text_right().text_color(picked ? t.accent : t.dim)
+        .when(number !== undefined && kind !== "-", (e) => e.hover((s) => s.text_color(t.accent).bg(t.raised))
+          .on_click((_e, cx) => { cx.stop_propagation(); this.openInNvim(this.open, number, cx); }))
+        .child(number === undefined ? "" : String(number)))
       .child(div().flex_1().min_w(0).truncate().child(text));
   }
 
@@ -298,7 +336,10 @@ export default class Changes extends View {
           .when(Boolean(counts[f.path]), (e) => e.child(div().flex_none().px(4).bg(t.accent).text_color(t.accent_foreground).text_size(10).font_semibold().child(`${counts[f.path]}`)))
           .child(div().id(`fc-${f.path}`).flex_none().px(5).h(20).flex().items_center().border_1().border_color(this.target?.path === f.path && this.target?.side === "file" ? t.accent : t.border)
             .text_size(10).text_color(t.dim).cursor_pointer().hover((s) => s.text_color(t.accent).border_color(t.accent))
-            .on_click((_e, cx) => { cx.stop_propagation(); this.pickFile(f.path, cx); }).child("comment"));
+            .on_click((_e, cx) => { cx.stop_propagation(); this.pickFile(f.path, cx); }).child("comment"))
+          .when(f.status !== "D", (e) => e.child(div().id(`fv-${f.path}`).flex_none().px(5).h(20).flex().items_center().border_1().border_color(t.border)
+            .text_size(10).text_color(t.dim).cursor_pointer().hover((s) => s.text_color(t.accent).border_color(t.accent))
+            .on_click((_e, cx) => { cx.stop_propagation(); this.openInNvim(f.path, 0, cx); }).child("nvim")));
       })).when(!this.files.length, (e) => e.child(div().p(8).text_color(t.dim).child(this.error || (this.loading ? "Loading changes…" : this.root ? "No uncommitted changes" : "No folder")))))
       .when(this.limited, el => el.child(div().px(12).py(4).text_size(11).text_color(t.dim).child("Showing the first 1,000 changed files")))
       .child(div().flex_1().min_h(0).relative().font_family(settings().font_family ?? "JetBrains Mono").text_size(11)
