@@ -64,10 +64,23 @@ if [ -d "$DST/mods/chat" ] && command -v patch >/dev/null; then
     if applies -d "$d" -p1 -i "$P/core-chat-log-3.1.patch"; then backup "$d/core/chat-log.js"; patch -s -N -t -d "$d" -p1 -i "$P/core-chat-log-3.1.patch" </dev/null
     else echo "  $d/core/chat-log.js: not Shepherdr 3.1's, reasoning lines left out"; fi
   done
-  for pp in chat.patch,chat chat-3.1.patch,chat tabs-tasks.patch,tabs-tasks; do
+  # The themed layouts' look (workbench, fortress, pixel) in Shepherdr's own mods: their glyphs, workbench's capitals,
+  # the status bar's bordered buttons. Each <mod>.patch changes only that mod's own files (never a shared copy).
+  for pp in chat.patch,chat chat-3.1.patch,chat tabs-tasks.patch,tabs-tasks \
+    tabs-tasks-look.patch,tabs-tasks accept-card.patch,accept-card artifacts.patch,artifacts \
+    chat-call.patch,chat-call chat-image.patch,chat-image chat-models.patch,chat-models chat-react.patch,chat-react \
+    confirm-chat.patch,confirm-chat coordinator.patch,coordinator jump.patch,jump keybinds.patch,keybinds \
+    machine-add-chat.patch,machine-add-chat menu-tasks.patch,menu-tasks new-menu-tasks.patch,new-menu-tasks \
+    newspace.patch,newspace pane-chat.patch,pane-chat prompt-chat.patch,prompt-chat \
+    shepherdr-settings.patch,shepherdr-settings spaces-chat.patch,spaces-chat task-changes.patch,task-changes \
+    task-files.patch,task-files task-pr.patch,task-pr tasks-menu.patch,tasks-menu tasks.patch,tasks \
+    toasts.patch,toasts workspace-chrome-shepherdr.patch,workspace-chrome-shepherdr \
+    workspace-status-chat.patch,workspace-status-chat; do
     f=${pp%,*} m=${pp#*,}
     [ -d "$DST/mods/$m" ] || continue
     applied -d "$DST/mods" -p1 -i "$P/$f" && { echo "  $f: already in"; continue; }
+    # A <name>-look.patch goes on top of <name>.patch: once it's in, <name>.patch is in too (under it).
+    [ -f "$P/${f%.patch}-look.patch" ] && applied -d "$DST/mods" -p1 -i "$P/${f%.patch}-look.patch" && { echo "  $f: already in"; continue; }
     if applies -d "$DST/mods" -p1 -i "$P/$f"; then
       backup "$DST/mods/$m"; patch -s -N -t -d "$DST/mods" -p1 -i "$P/$f" </dev/null; echo "  $f: applied"
     else echo "  $f: doesn't fit this mods/$m, left out"; fi

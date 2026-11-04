@@ -2,6 +2,13 @@ import { View, div, svg, image } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { spaces, panes, run, openOverlay, theme, window, shared, layout, settings, readTextFile, appHome, focused } from "herdr";
 const GS = () => ({ workbench: "gw", fortress: "gf" })[shared("layout")] ?? "g";
+// The workbench layout writes its labels in capitals (DESK, SHEPHERDR, MONITOR in the status bar).
+const caps = (x) => (shared("layout") === "workbench" ? String(x).toUpperCase() : x);
+// A bar button like the status bar's DESK/SHEPHERDR/MONITOR: 1px border, the accent border and a small accent dot when on.
+const barButton = (t, id, on, icon, label) => h_flex().id(id).h(22).px(7).gap(6).flex_none().items_center().rounded(0)
+  .border_1().border_color(on ? t.accent : t.border).text_size(11.5).text_color(on ? t.foreground : t.muted).cursor_pointer()
+  .hover(s => s.bg(t.hover).text_color(t.foreground)).on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+  .child(svg(icon).size(12)).child(caps(label)).when(on, e => e.child(div().size(5).bg(t.accent)));
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -73,7 +80,7 @@ export default class Tabs extends View {
         })
         .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); openOverlay({ frame: "none", mod: "px-menu", kind: "popup", width: 200, props: { tab: "tab", target: { id: c.id, space: space.id } } }); })
         .when(Boolean(program?.icon), el => el.child(program.tint ? svg(program.icon).size(14).text_color(t.muted) : image(program.icon).size(14)))
-        .child(div().max_w(170).truncate().child(c.zoomed ? `${name} Z` : name))
+        .child(div().max_w(170).truncate().child(caps(c.zoomed ? `${name} Z` : name)))
         .when(c.status === "working", el => el.child(svg(`mods/px-chrome/${GS()}/spinner.svg`).size(12).flex_none().text_color(t.working).spin(900)))
         .when(c.status === "blocked" || c.status === "done", el => el.child(div().size(6).rounded(0).bg(t[c.status])))
         .when(c.active, el => el.child(div().id(`close-${c.id}`).text_color(t.dim).on_mouse_down("left", stop).on_click((_e, cx) => { cx.stop_propagation(); run("tab.close", { id: c.id }); }).child(svg(`mods/px-pane/${GS()}/close.svg`).size(12))));
@@ -90,15 +97,13 @@ export default class Tabs extends View {
     this.syncPanel(space, panel, body, enabled);
     const panelButton = (id, label, icon) => {
       const on = panel && !panel.hidden && body?.active === id;
-      return h_flex().id(`panel-${id}`).h(26).px(8).gap(5).flex_none().items_center().rounded(0)
-        .text_size(12).bg(on ? t.selected : t.chrome).text_color(on ? t.foreground : t.muted)
-        .hover(s => s.bg(t.hover)).on_mouse_down("left", stop)
+      return barButton(t, `panel-${id}`, on, icon, label)
         .on_click(() => {
           if (on) run("layout.hide", { id: "panel" });
           else { run("layout.select", { stack: "panel-body", child: id }); run("layout.show", { id: "panel" }); }
-        }).child(svg(icon).size(14)).child(label);
+        });
     };
-    return h_flex().size_full().min_w(0).px(10).pl(lightsPadding).gap(3).items_center().bg(t.chrome).border_b(1).border_color(t.border)
+    return h_flex().size_full().min_w(0).px(10).pl(lightsPadding).gap(5).items_center().bg(t.chrome).border_b(1).border_color(t.border)
       .on_mouse_up("left", () => { this.pressed = null; })
       .on_scroll_wheel(e => { if (Math.abs(e.delta.y) >= 1) run(e.delta.y > 0 ? "tab.prev" : "tab.next"); })
       .child(h_flex().id("tab-scroll").flex_1().min_w(0).h_full().items_center().gap(3).overflow_x_scrollbar().children(shown.map(item)))
@@ -107,17 +112,15 @@ export default class Tabs extends View {
           .text_color(shown ? t.accent : t.dim).when(shown, e => e.bg(t.selected)).hover(st => st.bg(t.hover).text_color(t.foreground))
           .on_click(() => run("layout.toggle", { id: "shepherdr" }))
           .child(svg(`mods/px-tabs/${GS()}/shepherdr.svg`).size(15))); })
-      .child(button("tab-new", "+", () => openOverlay({ frame: "none", mod: "px-new-menu", kind: "popup", width: 250, height: 512 })))
+      .child(button("tab-new", svg(`mods/px-chrome/${GS()}/plus.svg`).size(14), () => openOverlay({ frame: "none", mod: "px-new-menu", kind: "popup", width: 250, height: 512 })))
       // Pair's panel (pairing-buddy), beside the focused terminal; the same as its Alt-p. Only where Pair installed its mod.
       // A second click closes the panel shown in this tab.
       .when(this.pairMod, el => { const tab = focused()?.tab, open = panes().find(p => p.mod === "pair" && p.tab === tab);
-        return el.child(h_flex().id("panel-pair").h(26).px(8).gap(5).flex_none().items_center().rounded(0)
-        .text_size(12).bg(open ? t.selected : t.chrome).text_color(open ? t.foreground : t.muted).hover(s => s.bg(t.hover).text_color(t.foreground)).on_mouse_down("left", stop)
-        .on_click(() => open ? run("pane.close", { pane: open.pane }) : run("pane.split", { direction: "right", mod: "pair" }))
-        .child(svg("mods/pair/pair.svg").size(14)).child("Pair")); })
-      .when(enabled.includes("files"), el => el.child(panelButton("files", "Files", `mods/px-files/${GS()}/file.svg`)))
-      .when(enabled.includes("changes"), el => el.child(panelButton("changes", "Changes", `mods/px-changes/${GS()}/changes.svg`)))
-      .when(Boolean(findNode(layout(), "pr")), el => el.child(panelButton("pr", "PR", "mods/task-pr/git-pull-request.svg")))
+        return el.child(barButton(t, "panel-pair", Boolean(open), `mods/px-chrome/${GS()}/users.svg`, "Pair")
+        .on_click(() => open ? run("pane.close", { pane: open.pane }) : run("pane.split", { direction: "right", mod: "pair" }))); })
+      .when(enabled.includes("files"), el => el.child(panelButton("files", "Files", `mods/px-chrome/${GS()}/files.svg`)))
+      .when(enabled.includes("changes"), el => el.child(panelButton("changes", "Changes", `mods/px-chrome/${GS()}/git-compare.svg`)))
+      .when(Boolean(findNode(layout(), "pr")), el => el.child(panelButton("pr", "PR", `mods/px-chrome/${GS()}/git-pull-request.svg`)))
       .when(Boolean(findNode(layout(), "reviews")), el => el.child(panelButton("reviews", (shared("reviews.summary")?.requested ?? 0) > 0 ? `Reviews ${shared("reviews.summary").requested}` : "Reviews", `mods/px-chrome/${GS()}/check.svg`)))
       .when(Boolean(findNode(layout(), "gcp")), el => el.child(panelButton("gcp", "GCP", `mods/px-chrome/${GS()}/server.svg`)))
       .when(Boolean(findNode(layout(), "stacks")), el => el.child(panelButton("stacks", "Stacks", `mods/px-chrome/${GS()}/layers.svg`)))

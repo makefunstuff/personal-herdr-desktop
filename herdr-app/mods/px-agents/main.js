@@ -352,7 +352,7 @@ export default class Agents extends View {
             cx.notify();
           })).child(pic)))
         .child(h_flex().flex_1().min_w(0).gap(5).items_center()
-          .child(div().min_w(0).max_w(full && more ? 120 : 200).truncate().text_color(idle ? t.muted : t.foreground).child(name))
+          .child(div().min_w(0).max_w(full && more ? 120 : 200).truncate().text_color(idle ? t.muted : t.foreground).child(shared("layout") === "workbench" ? String(name).toUpperCase() : name))
           .when(full && Boolean(more), el => el.child(div().flex_1().min_w(0).truncate().text_color(t.dim).child(`\u00b7 ${more}`))))
         .when(Boolean(machine), el => el.child(div().text_size(10).text_color(t.dim).child(machine)))
         .when(subs.length > 0, el => el.child(fold(a, subs)))
@@ -391,7 +391,9 @@ export default class Agents extends View {
           open ? this.folded.add(g.id) : this.folded.delete(g.id);
           cx.notify();
         })
-        .child(div().truncate().text_color(t[g.status] ?? t.dim).child(g.label))
+        // workbench: the status sections as its status words (WAIT, RUN, DONE, IDLE), space names in capitals
+        .child(div().truncate().text_color(t[g.status] ?? t.dim).when(shared("layout") === "workbench", (e) => e.font_semibold())
+          .child(shared("layout") !== "workbench" ? g.label : ({ blocked: "WAIT", working: "RUN", done: "DONE", idle: "IDLE" })[g.status] ?? String(g.label).toUpperCase()))
         .when(byPriority || !open, (el) => el.child(div().text_color(t.dim).child(String(g.members.length))))
         .child(div().flex_1())
         .when(!open, (el) => el

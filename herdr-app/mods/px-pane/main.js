@@ -142,18 +142,20 @@ export default class Pane extends View {
     });
   }
 
-  // CHAT | TERM: shown on agent panes and on chat panes. Workbench draws it as two module cells.
+  // CHAT | TERM: shown on agent panes and on chat panes. Drawn like the status bar's DESK/MONITOR buttons:
+  // a 1px border, the accent border and a small accent dot on the one shown.
   switcher(t, p) {
     const isChat = p.mod === CHAT;
     if (!isChat && !chatty(p)) return null;
-    const cell = (id, label, on, fn) => div().id(`${id}-${p.pane}`).h_full().px(8).flex().items_center().flex_none().cursor_pointer()
-      .border_l(2).border_color(t.border).font_semibold().text_size(10.5)
-      .bg(on ? t.accent : t.chrome).text_color(on ? t.accent_foreground : t.dim).hover((s) => s.text_color(on ? t.accent_foreground : t.foreground))
+    const cell = (id, label, on, fn) => h_flex().id(`${id}-${p.pane}`).h(20).px(7).gap(6).items_center().flex_none().rounded(0)
+      .border_1().border_color(on ? t.accent : t.border).font_semibold().text_size(10.5)
+      .text_color(on ? t.foreground : t.muted).when(!on, (s) => s.cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground)))
       .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
-      .on_click((_e, cx) => { cx.stop_propagation(); if (!on) fn(cx); });
-    return h_flex().h_full().flex_none()
-      .child(cell("ph-chat", "CHAT", isChat, (cx) => this.toChat(p, cx)).child("CHAT"))
-      .child(cell("ph-term", "TERM", !isChat, (cx) => this.toTerminal(p.pane, cx)).child("TERM"));
+      .on_click((_e, cx) => { cx.stop_propagation(); if (!on) fn(cx); })
+      .child(label).when(on, (s) => s.child(div().size(5).bg(t.accent)));
+    return h_flex().h_full().px(6).gap(4).items_center().flex_none()
+      .child(cell("ph-chat", "CHAT", isChat, (cx) => this.toChat(p, cx)))
+      .child(cell("ph-term", "TERM", !isChat, (cx) => this.toTerminal(p.pane, cx)));
   }
 
   render(cx) {

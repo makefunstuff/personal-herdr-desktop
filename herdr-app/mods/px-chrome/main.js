@@ -67,7 +67,7 @@ export default class WorkspaceChrome extends View {
       const row = (id, icon, label, dim, action) => h_flex().id(id).h(28).px(8).gap(9).items_center().rounded(0)
         .text_color(dim ? t.dim : t.muted).hover(s => s.bg(t.hover).text_color(t.foreground)).cursor_pointer()
         .on_click(action).child(svg(`mods/px-chrome/${GS()}/${icon}.svg`).size(14))
-        .when(!collapsed, el => el.child(label));
+        .when(!collapsed, el => el.child(shared("layout") === "workbench" ? label.toUpperCase() : label));
       return v_flex().size_full().bg(t.chrome).border_t(1).border_color(t.border).px(8).pt(4).pb(8).text_size(13)
         .child(row("settings", "settings", "Settings", false, () => run("app.settings"))
           .when(Boolean(updates().app.ready), el => el.child(div().size(6).rounded(0).bg(t.accent))))

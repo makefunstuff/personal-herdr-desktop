@@ -1,0 +1,28 @@
+diff -ruN a/task-files/main.js b/task-files/main.js
+--- a/task-files/main.js	2026-11-04 22:13:20
++++ b/task-files/main.js	2026-11-04 22:13:20
+@@ -1,10 +1,22 @@
+ // A task's Files (cloned from Herdr's files): a lazy file browser for the open task's folder
+ // (its worktree, else the folder it works in), with bounded read-only previews. A child of the
+ // Tasks panel's task view (taskwhere.js); it reads the folder only while it shows.
+-import { View, div, svg } from "gpui-kit";
++import { View, div, svg as gsvg } from "gpui-kit";
+ import { v_flex, h_flex, Editor, EditorState } from "gpui-base";
+-import { exec, readTextFile, watchFolder, theme, settings, window, home } from "herdr";
++import { exec, readTextFile, watchFolder, theme, settings, window, home, shared } from "herdr";
+ import { where, shown, FILES } from "./taskwhere.js";
++import { themed } from "./ui.js";
++// >>> personal-herdr-desktop: the themed layouts' look (workbench, fortress, pixel): their own glyphs (px-chrome's set
++// for the layout) for Shepherdr's, labels in capitals in workbench, and buttons and segments drawn like the status
++// bar's DESK/SHEPHERDR/MONITOR: a 1px border; the accent border and a small accent dot on the one that's on.
++const PX_GLYPHS = new Set(["archive", "branch", "check", "chevron-down", "chevron-left", "chevron-right", "circle-check", "clock", "file-text", "files",
++  "folder-plus", "folder", "git-branch", "git-compare", "git-pull-request", "layers", "minus", "monitor", "panel-left", "panel-right", "pin-off", "pin",
++  "plus", "search", "server", "settings", "sidebar", "spinner", "square-pen", "square", "terminal", "users", "x"]);
++const pxGS = () => ({ workbench: "gw", fortress: "gf" })[shared("layout")] ?? "g";
++const pxIcon = (p) => { const m = themed() && /^mods\/[^/]+\/([a-z-]+)\.svg$/.exec(String(p)); return m && PX_GLYPHS.has(m[1]) ? `mods/px-chrome/${pxGS()}/${m[1]}.svg` : p; };
++const svg = (p) => gsvg(pxIcon(p));
++const caps = (x) => (typeof x === "string" && shared("layout") === "workbench" ? x.toUpperCase() : x);
++// <<< personal-herdr-desktop
+ 
+ function location() {
+   const w = where();

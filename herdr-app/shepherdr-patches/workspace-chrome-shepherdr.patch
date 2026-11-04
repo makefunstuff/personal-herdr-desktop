@@ -1,0 +1,63 @@
+diff -ruN a/workspace-chrome-shepherdr/main.js b/workspace-chrome-shepherdr/main.js
+--- a/workspace-chrome-shepherdr/main.js
++++ b/workspace-chrome-shepherdr/main.js
+@@ -1,7 +1,48 @@
+-import { View, div, image, svg } from "gpui-kit";
++import { View, div, image, svg as gsvg } from "gpui-kit";
+ import { h_flex, v_flex } from "gpui-base";
+ import { theme, run, props, window, shared, setShared, updates, layout } from "herdr";
+-import { openSettings } from "./ui.js";
++import { openSettings, button as uiButton, segmented as uiSegmented, themed } from "./ui.js";
++// >>> personal-herdr-desktop: the themed layouts' look (workbench, fortress, pixel): their own glyphs (px-chrome's set
++// for the layout) for Shepherdr's, labels in capitals in workbench, and buttons and segments drawn like the status
++// bar's DESK/SHEPHERDR/MONITOR: a 1px border; the accent border and a small accent dot on the one that's on.
++const PX_GLYPHS = new Set(["archive", "branch", "check", "chevron-down", "chevron-left", "chevron-right", "circle-check", "clock", "file-text", "files",
++  "folder-plus", "folder", "git-branch", "git-compare", "git-pull-request", "layers", "minus", "monitor", "panel-left", "panel-right", "pin-off", "pin",
++  "plus", "search", "server", "settings", "sidebar", "spinner", "square-pen", "square", "terminal", "users", "x"]);
++const pxGS = () => ({ workbench: "gw", fortress: "gf" })[shared("layout")] ?? "g";
++const pxIcon = (p) => { const m = themed() && /^mods\/[^/]+\/([a-z-]+)\.svg$/.exec(String(p)); return m && PX_GLYPHS.has(m[1]) ? `mods/px-chrome/${pxGS()}/${m[1]}.svg` : p; };
++const svg = (p) => gsvg(pxIcon(p));
++const caps = (x) => (typeof x === "string" && shared("layout") === "workbench" ? x.toUpperCase() : x);
++const pxButton = (id, label, on = false) => { const t = theme(); return h_flex().id(id).h(22).px(7).gap(6).flex_none().items_center().whitespace_nowrap()
++  .border_1().border_color(on ? t.accent : t.border).text_size(11.5).text_color(on ? t.foreground : t.muted)
++  .child(caps(label)).when(on, (e) => e.child(div().size(5).flex_none().bg(t.accent))); };
++function button(id, label, o = {}) {
++  if (!themed()) return uiButton(id, label, o);
++  const t = theme(), { kind = "secondary", size = "sm", icon = null, disabled = false, onClick = null } = o;
++  const live = !disabled && Boolean(onClick);
++  return h_flex().id(id).h(size === "lg" ? 28 : size === "xs" ? 20 : 22).px(7).gap(6).flex_none().items_center().whitespace_nowrap()
++    .text_size(size === "lg" ? 12 : 11.5).font_medium()
++    .when(kind === "primary", (e) => e.border_1().border_color(t.accent).text_color(t.accent).font_semibold())
++    .when(kind === "secondary", (e) => e.border_1().border_color(t.border).text_color(t.muted))
++    .when(kind === "plain", (e) => e.text_color(t.muted))
++    .when(disabled, (e) => e.opacity(0.5))
++    .when(live, (e) => e.cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground))
++      .on_click((ev, cx) => { cx.stop_propagation(); onClick(ev, cx); cx.notify(); }))
++    .when(Boolean(icon), (e) => e.child(svg(icon).size(12).flex_none()))
++    .child(caps(label));
++}
++function segmented(id, options, value, onPick, o = {}) {
++  if (!themed()) return uiSegmented(id, options, value, onPick, o);
++  const t = theme();
++  return h_flex().flex_none().gap(4).items_center().when(Boolean(o.fill), (e) => e.w_full()).when(Boolean(o.disabled), (e) => e.opacity(0.5))
++    .children(options.map(([v, label, x]) => {
++      const on = v === value, off = Boolean(o.disabled) || Boolean(x?.disabled);
++      return pxButton(`${id}-${v}`, label, on).when(Boolean(o.fill), (e) => e.flex_1().justify_center()).when(Boolean(x?.tip), (e) => e.tooltip(x.tip))
++        .when(!on && Boolean(x?.disabled), (e) => e.text_color(t.dim).opacity(0.6))
++        .when(!on && !off, (e) => e.cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground))
++          .on_click((ev, cx) => { cx.stop_propagation(); onPick(v, ev, cx); cx.notify(); }));
++    }));
++}
++// <<< personal-herdr-desktop
+ 
+ function find(node, id) {
+   if (node?.id === id) return node;
+@@ -37,7 +78,7 @@
+       const row = (id, icon, label, action) => h_flex().id(id).h(28).px(8).gap(9).items_center().rounded(8)
+         .text_color(t.muted).hover(s => s.bg(t.hover).text_color(t.foreground)).cursor_pointer()
+         .on_click(action).child(svg(`mods/workspace-chrome-shepherdr/${icon}.svg`).size(14))
+-        .when(!collapsed, el => el.child(label));
++        .when(!collapsed, el => el.child(caps(label)));
+       return v_flex().size_full().bg(t.chrome).border_t(1).border_color(t.border).px(8).pt(4).pb(8).text_size(13)
+         // Herdr's own settings, as shipped (with its update dot), then Shepherdr's
+         // (mods/shepherdr-settings) under Shepherdr's mark, the crook.

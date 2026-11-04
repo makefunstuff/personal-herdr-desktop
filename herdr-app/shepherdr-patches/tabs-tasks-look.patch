@@ -1,0 +1,88 @@
+diff -ruN a/tabs-tasks/main.js b/tabs-tasks/main.js
+--- a/tabs-tasks/main.js	2026-11-04 22:13:32
++++ b/tabs-tasks/main.js	2026-11-04 22:13:32
+@@ -10,7 +10,18 @@
+ import { serveRemote } from "./secrets.js";
+ import { watchService } from "./service.js";
+ import { startBridge } from "./bridge.js";
+-import { countBadge, H, TEXT, RADIUS } from "./ui.js";
++import { countBadge, H, TEXT, RADIUS, themed } from "./ui.js";
++// Personal (personal-herdr-desktop): in the themed layouts this bar's buttons look like their status bar's DESK,
++// SHEPHERDR and MONITOR: a 1px border, the accent border and a small accent dot when on, the layout's own glyphs,
++// and (workbench) labels in capitals.
++const caps = (x) => (shared("layout") === "workbench" && typeof x === "string" ? x.toUpperCase() : x);
++const PX_ICON = { files: "px-chrome/G/files", changes: "px-chrome/G/git-compare", tasks: "px-chrome/G/circle-check", artifacts: "px-chrome/G/layers",
++  pr: "px-chrome/G/git-pull-request", pair: "px-chrome/G/users", desk: "px-chrome/G/file-text" };
++const icon = (id, own) => (themed() && PX_ICON[id] ? `mods/${PX_ICON[id].replace("G", GS())}.svg` : own);
++const barButton = (t, id, on, iconPath, label) => h_flex().id(id).h(22).px(7).gap(6).flex_none().items_center().rounded(0)
++  .border_1().border_color(on ? t.accent : t.border).text_size(11.5).text_color(on ? t.foreground : t.muted).cursor_pointer()
++  .hover(s => s.bg(t.hover).text_color(t.foreground)).on_mouse_down("left", (_e, cx) => cx.stop_propagation())
++  .child(svg(iconPath).size(12).flex_none()).when(label != null, e => e.child(caps(label))).when(on, e => e.child(div().size(5).flex_none().bg(t.accent)));
+ import { on as addonOn } from "./addons.js";
+ // A tab's name (what runs in it while Herdr named it): core/menus.js, as the web app's tab bar names it.
+ import { tabName } from "./core/menus.js";
+@@ -168,11 +179,11 @@
+         })
+         .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); openOverlay({ mod: "menu-tasks", kind: "popup", width: 236, height: menuHeight(c.id), props: { tab: "tab", target: { id: c.id, space: space.id }, right: this.right } }); })
+         .when(Boolean(program?.icon), el => el.child(program.tint ? svg(program.icon).size(14).text_color(t.muted) : image(program.icon).size(14)))
+-        .child(div().max_w(170).truncate().child(c.zoomed ? `${name} Z` : name))
+-        .when(c.status === "working", el => el.child(svg("mods/workspace-chrome/spinner.svg").size(12).flex_none().text_color(t.working).spin(900)))
++        .child(div().max_w(170).truncate().child(caps(c.zoomed ? `${name} Z` : name)))
++        .when(c.status === "working", el => el.child(svg(themed() ? `mods/px-chrome/${GS()}/spinner.svg` : "mods/workspace-chrome/spinner.svg").size(12).flex_none().text_color(t.working).spin(900)))
+         .when(needs.get(c.id) > 0 || readies.get(c.id) > 0, el => el.child(countBadge(needs.get(c.id), readies.get(c.id), c.active ? t.raised : t.chrome)))
+         .when(!(needs.get(c.id) > 0 || readies.get(c.id) > 0) && (c.status === "blocked" || c.status === "done"), el => el.child(div().size(6).rounded(3).bg(t[c.status])))
+-        .when(c.active, el => el.child(div().id(`close-${c.id}`).cursor_pointer().text_color(t.dim).on_mouse_down("left", stop).on_click((_e, cx) => { cx.stop_propagation(); closeTab(c.id); }).child(svg("mods/pane/close.svg").size(12))));
++        .when(c.active, el => el.child(div().id(`close-${c.id}`).cursor_pointer().text_color(t.dim).on_mouse_down("left", stop).on_click((_e, cx) => { cx.stop_propagation(); closeTab(c.id); }).child(svg(themed() ? `mods/px-pane/${GS()}/close.svg` : "mods/pane/close.svg").size(12))));
+     };
+     const root = layout(), sidebar = find(root, "sidebar"), w = window();
+     // Old saved rails and a dragged-narrow sidebar can be smaller than the window buttons.
+@@ -190,29 +201,37 @@
+     // (the open one keeps its label); a count after the icon (Tasks': what needs the person, red,
+     // and what's Ready, green: [need, ready]).
+     const roomy = (this.width ?? 0) >= 1100;
+-    const panelButton = (id, label, icon, [need, ready] = [0, 0]) => {
++    const panelButton = (id, label, icon0, [need, ready] = [0, 0]) => {
+       const badge = need + ready;
+       const on = panel && !panel.hidden && body?.active === id;
++      if (themed()) return barButton(t, `panel-${id}`, on, icon(id, icon0), roomy || on ? label : null)
++        .when(badge > 0, el => el.child(countBadge(need, ready, t.chrome)))
++        .on_click(() => {
++          if (on) run("layout.hide", { id: "panel" });
++          else { run("layout.select", { stack: "panel-body", child: id }); run("layout.show", { id: "panel" }); }
++        });
+       return h_flex().id(`panel-${id}`).h(H.sm).pl(5).pr(roomy || on || badge ? 8 : 5).gap(5).flex_none().items_center().rounded(RADIUS.control)
+         .text_size(TEXT.label).bg(on ? t.selected : t.chrome).text_color(on ? t.foreground : t.muted)
+         .cursor_pointer().hover(s => s.bg(on ? t.selected : t.hover).text_color(t.foreground)).on_mouse_down("left", stop)
+         .on_click(() => {
+           if (on) run("layout.hide", { id: "panel" });
+           else { run("layout.select", { stack: "panel-body", child: id }); run("layout.show", { id: "panel" }); }
+-        }).child(svg(icon).size(14).flex_none())
++        }).child(svg(icon0).size(14).flex_none())
+         .when(roomy || on, el => el.child(label))
+         .when(badge > 0, el => el.child(countBadge(need, ready, on ? t.selected : t.chrome)));
+     };
+-    return h_flex().id("tabs-bar").size_full().min_w(0).px(10).pl(lightsPadding).gap(3).items_center().bg(t.chrome).border_b(1).border_color(t.border)
++    return h_flex().id("tabs-bar").size_full().min_w(0).px(10).pl(lightsPadding).gap(themed() ? 5 : 3).items_center().bg(t.chrome).border_b(1).border_color(t.border)
+       .on_size_change((size, cx) => { this.width = size.width; cx.notify(); })
+       .on_mouse_up("left", () => { this.pressed = null; })
+       // The bar runs to the window's right edge: menus opened from it place their submenus by it.
+       .on_mouse_move((e) => { this.right = e.position.x - e.local_position.x + e.bounds.width; })
+       .on_scroll_wheel(e => { if (Math.abs(e.delta.y) >= 1) run(e.delta.y > 0 ? "tab.prev" : "tab.next"); })
+       .child(h_flex().id("tab-scroll").flex_1().min_w(0).h_full().items_center().gap(3).overflow_x_scrollbar().children(tabsShown ? shown.map(item) : []))
+-      .child(button("tab-new", "+", () => openOverlay({ mod: "new-menu-tasks", kind: "popup", width: 250, height: 543, props: { right: this.right } })))
++      .child(button("tab-new", themed() ? svg(`mods/px-chrome/${GS()}/plus.svg`).size(14) : "+", () => openOverlay({ mod: "new-menu-tasks", kind: "popup", width: 250, height: 543, props: { right: this.right } })))
+       // Personal: Pair's panel beside the focused terminal (its Alt-p); a second click closes it.
+       .when(this.pairMod, el => { const tab = focused()?.tab, open = panes().find(p => p.mod === "pair" && p.tab === tab);
++        if (themed()) return el.child(barButton(t, "panel-pair", Boolean(open), icon("pair"), "Pair")
++          .on_click(() => open ? run("pane.close", { pane: open.pane }) : run("pane.split", { direction: "right", mod: "pair" })));
+         return el.child(h_flex().id("panel-pair").h(H.sm).px(8).gap(5).flex_none().items_center().rounded(RADIUS.control)
+           .text_size(TEXT.label).bg(open ? t.selected : t.chrome).text_color(open ? t.foreground : t.muted).cursor_pointer()
+           .hover(s => s.bg(t.hover).text_color(t.foreground)).on_mouse_down("left", stop)
+@@ -228,6 +247,7 @@
+       .when(enabled.includes("docs"), el => el.child(panelButton("docs", "Docs", `mods/px-chrome/${GS()}/file-text.svg`)))
+       .when(enabled.includes("time"), el => el.child(panelButton("time", "Time", `mods/px-chrome/${GS()}/clock.svg`)))
+       .when(Boolean(find(root, "desk")) && find(root, "status")?.content?.mod !== "px-status", el => { const open = !find(root, "desk").hidden;
++        if (themed()) return el.child(barButton(t, "panel-desk", open, icon("desk"), "Desk").on_click(() => run("layout.toggle", { id: "desk" })));
+         return el.child(h_flex().id("panel-desk").h(H.sm).px(8).gap(5).flex_none().items_center().rounded(RADIUS.control)
+           .text_size(TEXT.label).bg(open ? t.selected : t.chrome).text_color(open ? t.foreground : t.muted).cursor_pointer()
+           .hover(s => s.bg(t.hover).text_color(t.foreground)).on_mouse_down("left", stop)

@@ -3,7 +3,10 @@
 
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { exec, theme } from "herdr";
+import { exec, theme, shared } from "herdr";
+
+// The workbench layout writes its headings and labels in capitals (SPACES, AGENTS, BUS 1 · THIS COMPUTER).
+const caps = (x) => (shared("layout") === "workbench" ? String(x).toUpperCase() : x);
 
 const EVERY = 3000;
 const MAX_DISKS = 4;
@@ -93,20 +96,24 @@ export default class SysMon extends View {
     });
   }
 
+  // Grey while there's room; amber when busy, red when nearly full (the Monitor's meters).
   color(pct) {
     const t = theme();
-    return pct >= 90 ? t.blocked : pct >= 70 ? t.working : t.done;
+    return pct >= 90 ? t.blocked : pct >= 70 ? t.working : t.muted;
+  }
+  tone(pct) {
+    const t = theme();
+    return pct >= 90 ? t.blocked : pct >= 70 ? t.working : t.foreground;
   }
 
-  // One row: label, bar, percentage.
+  // One row: label, a segmented bar like the Monitor's (thin cells), percentage.
   meter(id, label, pct, tip) {
     const t = theme();
-    const p = Math.min(100, Math.max(0, pct ?? 0));
+    const p = Math.min(100, Math.max(0, pct ?? 0)), cells = 20, on = Math.round((p / 100) * cells);
     return h_flex().id(id).gap(8).items_center().tooltip(tip ?? label)
-      .child(div().w(48).flex_none().truncate().text_color(t.muted).child(label))
-      .child(div().flex_1().h(6).bg(t.raised).border(1).border_color(t.border)
-        .child(div().h_full().w(`${p}%`).bg(this.color(p))))
-      .child(div().w(34).flex_none().text_color(this.color(p)).child(pct == null ? "–" : `${Math.round(p)}%`));
+      .child(div().w(48).flex_none().truncate().text_size(10.5).text_color(t.dim).child(caps(label)))
+      .child(h_flex().flex_1().gap(1).children(Array.from({ length: cells }, (_, i) => div().flex_1().h(5).bg(i < on ? this.color(p) : t.raised))))
+      .child(div().w(34).flex_none().text_color(this.tone(p)).child(pct == null ? "–" : `${Math.round(p)}%`));
   }
 
   render() {
@@ -115,10 +122,10 @@ export default class SysMon extends View {
     const gb = (b) => `${(b / 2 ** 30).toFixed(1)}G`;
     return v_flex().size_full().min_h(0).bg(t.chrome).border_t(1).border_color(t.border)
       .child(h_flex().px(16).h(41).pt(14).pb(5).flex_none().items_center()
-        .child(div().text_size(11.5).font_medium().text_color(t.dim).child("System")))
+        .child(div().text_size(11.5).font_medium().text_color(t.dim).child(caps("System"))))
       .child(v_flex().id("sys-list").flex_1().min_h(0).overflow_y_scrollbar().px(16).pb(10).gap(7).text_size(11)
         .when(Boolean(s), (el) => el
-          .when(!s.linux, (el) => el.child(div().text_color(t.dim).child("CPU, GPU and RAM: Linux only")))
+          .when(!s.linux, (el) => el.child(div().text_color(t.dim).child(caps("CPU, GPU and RAM: Linux only"))))
           .when(s.linux, (el) => el.child(this.meter("cpu", "CPU", s.cpu)))
           .children(s.gpus.map((g) => this.meter(`gpu${g.index}`, s.gpus.length > 1 ? `GPU${g.index}` : "GPU", g.util,
             g.vram == null ? `GPU ${g.index}: ${g.util}% load` : `GPU ${g.index}: ${g.util}% load · VRAM ${Math.round(g.vram)}% · ${g.temp}°C`)))

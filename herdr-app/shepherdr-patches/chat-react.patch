@@ -1,0 +1,68 @@
+diff -ruN a/chat-react/main.js b/chat-react/main.js
+--- a/chat-react/main.js	2026-11-04 22:13:23
++++ b/chat-react/main.js	2026-11-04 22:13:23
+@@ -6,11 +6,53 @@
+ // on it), frequent (your most used, from the chat's data/chat-emoji-uses.json), overlay }.
+ // The pick goes back through shared "chat.reactreq" = { pane, at, target, text, emoji }.
+ 
+-import { View, div, svg } from "gpui-kit";
++import { View, div, svg as gsvg } from "gpui-kit";
+ import { h_flex, v_flex, InputState, Input, VirtualListScrollHandle, v_virtual_list, Scrollbar } from "gpui-base";
+-import { theme, props, setShared, closeOverlay, appHome } from "herdr";
++import { theme, props, setShared, closeOverlay, appHome, shared } from "herdr";
+ import * as fs from "fs/promises";
+ import DATA from "./emoji-data.js";
++import { button as uiButton, segmented as uiSegmented, themed } from "./ui.js";
++// >>> personal-herdr-desktop: the themed layouts' look (workbench, fortress, pixel): their own glyphs (px-chrome's set
++// for the layout) for Shepherdr's, labels in capitals in workbench, and buttons and segments drawn like the status
++// bar's DESK/SHEPHERDR/MONITOR: a 1px border; the accent border and a small accent dot on the one that's on.
++const PX_GLYPHS = new Set(["archive", "branch", "check", "chevron-down", "chevron-left", "chevron-right", "circle-check", "clock", "file-text", "files",
++  "folder-plus", "folder", "git-branch", "git-compare", "git-pull-request", "layers", "minus", "monitor", "panel-left", "panel-right", "pin-off", "pin",
++  "plus", "search", "server", "settings", "sidebar", "spinner", "square-pen", "square", "terminal", "users", "x"]);
++const pxGS = () => ({ workbench: "gw", fortress: "gf" })[shared("layout")] ?? "g";
++const pxIcon = (p) => { const m = themed() && /^mods\/[^/]+\/([a-z-]+)\.svg$/.exec(String(p)); return m && PX_GLYPHS.has(m[1]) ? `mods/px-chrome/${pxGS()}/${m[1]}.svg` : p; };
++const svg = (p) => gsvg(pxIcon(p));
++const caps = (x) => (typeof x === "string" && shared("layout") === "workbench" ? x.toUpperCase() : x);
++const pxButton = (id, label, on = false) => { const t = theme(); return h_flex().id(id).h(22).px(7).gap(6).flex_none().items_center().whitespace_nowrap()
++  .border_1().border_color(on ? t.accent : t.border).text_size(11.5).text_color(on ? t.foreground : t.muted)
++  .child(caps(label)).when(on, (e) => e.child(div().size(5).flex_none().bg(t.accent))); };
++function button(id, label, o = {}) {
++  if (!themed()) return uiButton(id, label, o);
++  const t = theme(), { kind = "secondary", size = "sm", icon = null, disabled = false, onClick = null } = o;
++  const live = !disabled && Boolean(onClick);
++  return h_flex().id(id).h(size === "lg" ? 28 : size === "xs" ? 20 : 22).px(7).gap(6).flex_none().items_center().whitespace_nowrap()
++    .text_size(size === "lg" ? 12 : 11.5).font_medium()
++    .when(kind === "primary", (e) => e.border_1().border_color(t.accent).text_color(t.accent).font_semibold())
++    .when(kind === "secondary", (e) => e.border_1().border_color(t.border).text_color(t.muted))
++    .when(kind === "plain", (e) => e.text_color(t.muted))
++    .when(disabled, (e) => e.opacity(0.5))
++    .when(live, (e) => e.cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground))
++      .on_click((ev, cx) => { cx.stop_propagation(); onClick(ev, cx); cx.notify(); }))
++    .when(Boolean(icon), (e) => e.child(svg(icon).size(12).flex_none()))
++    .child(caps(label));
++}
++function segmented(id, options, value, onPick, o = {}) {
++  if (!themed()) return uiSegmented(id, options, value, onPick, o);
++  const t = theme();
++  return h_flex().flex_none().gap(4).items_center().when(Boolean(o.fill), (e) => e.w_full()).when(Boolean(o.disabled), (e) => e.opacity(0.5))
++    .children(options.map(([v, label, x]) => {
++      const on = v === value, off = Boolean(o.disabled) || Boolean(x?.disabled);
++      return pxButton(`${id}-${v}`, label, on).when(Boolean(o.fill), (e) => e.flex_1().justify_center()).when(Boolean(x?.tip), (e) => e.tooltip(x.tip))
++        .when(!on && Boolean(x?.disabled), (e) => e.text_color(t.dim).opacity(0.6))
++        .when(!on && !off, (e) => e.cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground))
++          .on_click((ev, cx) => { cx.stop_propagation(); onPick(v, ev, cx); cx.notify(); }));
++    }));
++}
++// <<< personal-herdr-desktop
+ 
+ const PER = 9, CELL = 36, HEAD = 28, PAD = 6;
+ const FREQUENT_ICON = "clock";
+@@ -118,7 +160,7 @@
+         .child(v_virtual_list("emoji-list", rows.length, sizes, (i) => rows[i].key, (range) => {
+           this.range = range;
+           return rows.slice(range.start, range.end).map((r) => {
+-            if (r.kind === "head") return div().w_full().h(HEAD).px(4).pt(9).text_size(11).text_color(t.dim).child(r.name);
++            if (r.kind === "head") return div().w_full().h(HEAD).px(4).pt(9).text_size(11).text_color(t.dim).child(caps(r.name));
+             if (r.kind === "none") return div().w_full().h(CELL).px(4).flex().items_center().text_color(t.dim).child("No emoji found");
+             return h_flex().w_full().h(CELL).children(r.list.map((x) => div().size(CELL).flex_none().flex().items_center().justify_center().rounded(7)
+               .text_size(21).cursor_pointer().when(mine.has(withTone(x.e, x.tone ? this.tone : 0)), (el) => el.bg(t.selected))

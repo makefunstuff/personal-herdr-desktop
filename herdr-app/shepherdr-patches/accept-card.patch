@@ -1,0 +1,96 @@
+diff -ruN a/accept-card/main.js b/accept-card/main.js
+--- a/accept-card/main.js	2026-11-04 22:12:57
++++ b/accept-card/main.js	2026-11-04 22:12:57
+@@ -10,11 +10,63 @@
+ // and Esc close it. A task that isn't Ready (accepted from elsewhere a moment ago, say) says so
+ // calmly, with only Close.
+ 
+-import { View, div, svg } from "gpui-kit";
++import { View, div, svg as gsvg } from "gpui-kit";
+ import { v_flex, h_flex } from "gpui-base";
+ import { openViewer } from "./artview.js";
+ import { appHome, closeOverlay, exec, notify, openOverlay, props, shared, setShared, theme } from "herdr";
+-import { dialogFooter, green, red, amber, H, RADIUS, TEXT } from "./ui.js";
++import { dialogFooter as uiDialogFooter, green, red, amber, H, RADIUS, TEXT, button as uiButton, segmented as uiSegmented, themed } from "./ui.js";
++// >>> personal-herdr-desktop: the themed layouts' look (workbench, fortress, pixel): their own glyphs (px-chrome's set
++// for the layout) for Shepherdr's, labels in capitals in workbench, and buttons and segments drawn like the status
++// bar's DESK/SHEPHERDR/MONITOR: a 1px border; the accent border and a small accent dot on the one that's on.
++const PX_GLYPHS = new Set(["archive", "branch", "check", "chevron-down", "chevron-left", "chevron-right", "circle-check", "clock", "file-text", "files",
++  "folder-plus", "folder", "git-branch", "git-compare", "git-pull-request", "layers", "minus", "monitor", "panel-left", "panel-right", "pin-off", "pin",
++  "plus", "search", "server", "settings", "sidebar", "spinner", "square-pen", "square", "terminal", "users", "x"]);
++const pxGS = () => ({ workbench: "gw", fortress: "gf" })[shared("layout")] ?? "g";
++const pxIcon = (p) => { const m = themed() && /^mods\/[^/]+\/([a-z-]+)\.svg$/.exec(String(p)); return m && PX_GLYPHS.has(m[1]) ? `mods/px-chrome/${pxGS()}/${m[1]}.svg` : p; };
++const svg = (p) => gsvg(pxIcon(p));
++const caps = (x) => (typeof x === "string" && shared("layout") === "workbench" ? x.toUpperCase() : x);
++const pxButton = (id, label, on = false) => { const t = theme(); return h_flex().id(id).h(22).px(7).gap(6).flex_none().items_center().whitespace_nowrap()
++  .border_1().border_color(on ? t.accent : t.border).text_size(11.5).text_color(on ? t.foreground : t.muted)
++  .child(caps(label)).when(on, (e) => e.child(div().size(5).flex_none().bg(t.accent))); };
++function button(id, label, o = {}) {
++  if (!themed()) return uiButton(id, label, o);
++  const t = theme(), { kind = "secondary", size = "sm", icon = null, disabled = false, onClick = null } = o;
++  const live = !disabled && Boolean(onClick);
++  return h_flex().id(id).h(size === "lg" ? 28 : size === "xs" ? 20 : 22).px(7).gap(6).flex_none().items_center().whitespace_nowrap()
++    .text_size(size === "lg" ? 12 : 11.5).font_medium()
++    .when(kind === "primary", (e) => e.border_1().border_color(t.accent).text_color(t.accent).font_semibold())
++    .when(kind === "secondary", (e) => e.border_1().border_color(t.border).text_color(t.muted))
++    .when(kind === "plain", (e) => e.text_color(t.muted))
++    .when(disabled, (e) => e.opacity(0.5))
++    .when(live, (e) => e.cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground))
++      .on_click((ev, cx) => { cx.stop_propagation(); onClick(ev, cx); cx.notify(); }))
++    .when(Boolean(icon), (e) => e.child(svg(icon).size(12).flex_none()))
++    .child(caps(label));
++}
++function segmented(id, options, value, onPick, o = {}) {
++  if (!themed()) return uiSegmented(id, options, value, onPick, o);
++  const t = theme();
++  return h_flex().flex_none().gap(4).items_center().when(Boolean(o.fill), (e) => e.w_full()).when(Boolean(o.disabled), (e) => e.opacity(0.5))
++    .children(options.map(([v, label, x]) => {
++      const on = v === value, off = Boolean(o.disabled) || Boolean(x?.disabled);
++      return pxButton(`${id}-${v}`, label, on).when(Boolean(o.fill), (e) => e.flex_1().justify_center()).when(Boolean(x?.tip), (e) => e.tooltip(x.tip))
++        .when(!on && Boolean(x?.disabled), (e) => e.text_color(t.dim).opacity(0.6))
++        .when(!on && !off, (e) => e.cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground))
++          .on_click((ev, cx) => { cx.stop_propagation(); onPick(v, ev, cx); cx.notify(); }));
++    }));
++}
++// <<< personal-herdr-desktop
++// >>> personal-herdr-desktop: the dialog's footer with the buttons above in the themed layouts (ui.js's otherwise).
++function dialogFooter(o) {
++  if (!themed()) return uiDialogFooter(o);
++  const t = theme(), { onCancel, primary, cancelLabel = "Cancel", note = "", error = false } = o;
++  return h_flex().h(H.lg).w_full().flex_none().gap(8).items_center()
++    .child(div().flex_1().min_w(0).truncate().text_size(TEXT.label).text_color(error ? red() : t.dim).child(note || ""))
++    .child(button("dialog-cancel", cancelLabel, { kind: "secondary", size: "lg", onClick: onCancel }))
++    .when(Boolean(primary), (el) => el.child(button(primary.id ?? "dialog-primary", primary.label,
++      { kind: "primary", size: "lg", disabled: primary.disabled, onClick: primary.onClick })));
++}
++// <<< personal-herdr-desktop
+ // The card's words, the summary cut and the details as bullets: core/accept.js, shared with the web app's card.
+ import { ACCEPT, words, readable, commitsLine, filesLine, moreLine, proofTitle, whereNow } from "./core/accept.js";
+ 
+@@ -196,7 +248,7 @@
+   // One small section: a hairline above, a quiet label, then what it says at reading size.
+   section(t, label, content) {
+     return v_flex().w_full().gap(6).pt(14).border_t(1).border_color(t.border)
+-      .child(div().text_size(TEXT.label).font_medium().text_color(t.muted).child(label))
++      .child(div().text_size(TEXT.label).font_medium().text_color(t.muted).child(caps(label)))
+       .child(content);
+   }
+ 
+@@ -241,7 +293,7 @@
+       .on_click((_e, cx) => { cx.stop_propagation(); this.openProof(cx); cx.notify(); })
+       .child(div().flex_1().min_w(0).truncate().text_color(t.foreground)
+         .child(this.opening ? ACCEPT.opening : proofTitle(e.proof.title)))
+-      .child(div().flex_none().text_size(TEXT.label).text_color(t.muted).child(ACCEPT.open))
++      .child(div().flex_none().text_size(TEXT.label).text_color(t.muted).child(caps(ACCEPT.open)))
+       .child(svg("mods/chat-image/external-link.svg").size(13).flex_none().text_color(t.muted));
+   }
+ 
+@@ -253,7 +305,7 @@
+         .hover((s) => s.text_color(t.foreground))
+         .on_click((_e, cx) => { cx.stop_propagation(); this.details = !open; cx.notify(); })
+         .child(svg(`mods/workspace-chrome/chevron-${open ? "down" : "right"}.svg`).size(13).flex_none())
+-        .child(div().text_size(TEXT.label).font_medium().child(ACCEPT.details)))
++        .child(div().text_size(TEXT.label).font_medium().child(caps(ACCEPT.details))))
+       .when(open, (el) => el.child(div().w_full().pl(19).child(mdView(t, readable(text)))));
+   }
+ 

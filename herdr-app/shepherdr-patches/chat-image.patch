@@ -1,0 +1,134 @@
+diff -ruN a/chat-image/artifact-bar.js b/chat-image/artifact-bar.js
+--- a/chat-image/artifact-bar.js	2026-11-04 22:13:22
++++ b/chat-image/artifact-bar.js	2026-11-04 22:13:22
+@@ -6,12 +6,53 @@
+ // reopens the viewer on that mod. mods/artifacts/main.js has the sidebar's copy of the stepper
+ // (mods can't import each other's files; keep the two in step). Colors are the theme's.
+ 
+-import { div, svg } from "gpui-kit";
++import { div, svg as gsvg } from "gpui-kit";
+ import { h_flex } from "gpui-base";
+ import { props, closeOverlay, shared, setShared, theme } from "herdr";
+ import { showInSidebar, hasSidebarView } from "./artifact-sidebar.js";
+ import { artifactCli as cli, showViewer } from "./artview.js";
+-import { toast, plainError, TEXT, RADIUS } from "./ui.js";
++import { toast, plainError, TEXT, RADIUS, button as uiButton, segmented as uiSegmented, themed } from "./ui.js";
++// >>> personal-herdr-desktop: the themed layouts' look (workbench, fortress, pixel): their own glyphs (px-chrome's set
++// for the layout) for Shepherdr's, labels in capitals in workbench, and buttons and segments drawn like the status
++// bar's DESK/SHEPHERDR/MONITOR: a 1px border; the accent border and a small accent dot on the one that's on.
++const PX_GLYPHS = new Set(["archive", "branch", "check", "chevron-down", "chevron-left", "chevron-right", "circle-check", "clock", "file-text", "files",
++  "folder-plus", "folder", "git-branch", "git-compare", "git-pull-request", "layers", "minus", "monitor", "panel-left", "panel-right", "pin-off", "pin",
++  "plus", "search", "server", "settings", "sidebar", "spinner", "square-pen", "square", "terminal", "users", "x"]);
++const pxGS = () => ({ workbench: "gw", fortress: "gf" })[shared("layout")] ?? "g";
++const pxIcon = (p) => { const m = themed() && /^mods\/[^/]+\/([a-z-]+)\.svg$/.exec(String(p)); return m && PX_GLYPHS.has(m[1]) ? `mods/px-chrome/${pxGS()}/${m[1]}.svg` : p; };
++const svg = (p) => gsvg(pxIcon(p));
++const caps = (x) => (typeof x === "string" && shared("layout") === "workbench" ? x.toUpperCase() : x);
++const pxButton = (id, label, on = false) => { const t = theme(); return h_flex().id(id).h(22).px(7).gap(6).flex_none().items_center().whitespace_nowrap()
++  .border_1().border_color(on ? t.accent : t.border).text_size(11.5).text_color(on ? t.foreground : t.muted)
++  .child(caps(label)).when(on, (e) => e.child(div().size(5).flex_none().bg(t.accent))); };
++function button(id, label, o = {}) {
++  if (!themed()) return uiButton(id, label, o);
++  const t = theme(), { kind = "secondary", size = "sm", icon = null, disabled = false, onClick = null } = o;
++  const live = !disabled && Boolean(onClick);
++  return h_flex().id(id).h(size === "lg" ? 28 : size === "xs" ? 20 : 22).px(7).gap(6).flex_none().items_center().whitespace_nowrap()
++    .text_size(size === "lg" ? 12 : 11.5).font_medium()
++    .when(kind === "primary", (e) => e.border_1().border_color(t.accent).text_color(t.accent).font_semibold())
++    .when(kind === "secondary", (e) => e.border_1().border_color(t.border).text_color(t.muted))
++    .when(kind === "plain", (e) => e.text_color(t.muted))
++    .when(disabled, (e) => e.opacity(0.5))
++    .when(live, (e) => e.cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground))
++      .on_click((ev, cx) => { cx.stop_propagation(); onClick(ev, cx); cx.notify(); }))
++    .when(Boolean(icon), (e) => e.child(svg(icon).size(12).flex_none()))
++    .child(caps(label));
++}
++function segmented(id, options, value, onPick, o = {}) {
++  if (!themed()) return uiSegmented(id, options, value, onPick, o);
++  const t = theme();
++  return h_flex().flex_none().gap(4).items_center().when(Boolean(o.fill), (e) => e.w_full()).when(Boolean(o.disabled), (e) => e.opacity(0.5))
++    .children(options.map(([v, label, x]) => {
++      const on = v === value, off = Boolean(o.disabled) || Boolean(x?.disabled);
++      return pxButton(`${id}-${v}`, label, on).when(Boolean(o.fill), (e) => e.flex_1().justify_center()).when(Boolean(x?.tip), (e) => e.tooltip(x.tip))
++        .when(!on && Boolean(x?.disabled), (e) => e.text_color(t.dim).opacity(0.6))
++        .when(!on && !off, (e) => e.cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground))
++          .on_click((ev, cx) => { cx.stop_propagation(); onPick(v, ev, cx); cx.notify(); }));
++    }));
++}
++// <<< personal-herdr-desktop
+ 
+ const MARKUP = "artifacts.markup";
+ 
+@@ -73,6 +114,15 @@
+ }
+ 
+ function textBtn(id, icon, label, tip, act, on, t) {
++  // personal-herdr-desktop: in the themed layouts, a bar button like their status bar's.
++  if (themed()) return h_flex().id(id).h(22).flex_none().px(7).gap(6).items_center().cursor_pointer().whitespace_nowrap()
++    .border_1().border_color(on ? t.accent : t.border).text_size(11.5).text_color(on ? t.foreground : t.muted)
++    .hover((s) => s.bg(t.hover).text_color(t.foreground))
++    .when(Boolean(tip), (el) => el.tooltip(tip))
++    .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
++    .on_click((_e, cx) => { cx.stop_propagation(); act(cx); cx.notify(); })
++    .when(Boolean(icon), (el) => el.child(svg(icon).size(12).flex_none()))
++    .child(caps(label)).when(Boolean(on), (el) => el.child(div().size(5).flex_none().bg(t.accent)));
+   return h_flex().id(id).h(32).flex_none().pl(icon ? 8 : 10).pr(10).gap(6).items_center().rounded(RADIUS.control).cursor_pointer()
+     .text_size(TEXT.body).font_medium().text_color(on ? t.foreground : t.muted).when(Boolean(on), (el) => el.bg(t.selected))
+     .hover((s) => s.bg(on ? t.selected : t.hover).text_color(t.foreground))
+diff -ruN a/chat-image/main.js b/chat-image/main.js
+--- a/chat-image/main.js	2026-11-04 22:13:22
++++ b/chat-image/main.js	2026-11-04 22:13:22
+@@ -12,11 +12,52 @@
+ // artifact-bar.js: title, version stepper, Mark up, Open in the sidebar, close) over the
+ // artifact's own mod, on the same backdrop.
+ 
+-import { View, div, image, svg } from "gpui-kit";
++import { View, div, image, svg as gsvg } from "gpui-kit";
+ import { h_flex, v_flex } from "gpui-base";
+-import { theme, props, closeOverlay, readTextFile, settings, exec, appHome, window as win } from "herdr";
++import { theme, props, closeOverlay, readTextFile, settings, exec, appHome, window as win, shared } from "herdr";
+ import { initArtifactBar, artifactBar, closeArtifactBar } from "./artifact-bar.js";
+-import { toast, TEXT, RADIUS } from "./ui.js";
++import { toast, TEXT, RADIUS, button as uiButton, segmented as uiSegmented, themed } from "./ui.js";
++// >>> personal-herdr-desktop: the themed layouts' look (workbench, fortress, pixel): their own glyphs (px-chrome's set
++// for the layout) for Shepherdr's, labels in capitals in workbench, and buttons and segments drawn like the status
++// bar's DESK/SHEPHERDR/MONITOR: a 1px border; the accent border and a small accent dot on the one that's on.
++const PX_GLYPHS = new Set(["archive", "branch", "check", "chevron-down", "chevron-left", "chevron-right", "circle-check", "clock", "file-text", "files",
++  "folder-plus", "folder", "git-branch", "git-compare", "git-pull-request", "layers", "minus", "monitor", "panel-left", "panel-right", "pin-off", "pin",
++  "plus", "search", "server", "settings", "sidebar", "spinner", "square-pen", "square", "terminal", "users", "x"]);
++const pxGS = () => ({ workbench: "gw", fortress: "gf" })[shared("layout")] ?? "g";
++const pxIcon = (p) => { const m = themed() && /^mods\/[^/]+\/([a-z-]+)\.svg$/.exec(String(p)); return m && PX_GLYPHS.has(m[1]) ? `mods/px-chrome/${pxGS()}/${m[1]}.svg` : p; };
++const svg = (p) => gsvg(pxIcon(p));
++const caps = (x) => (typeof x === "string" && shared("layout") === "workbench" ? x.toUpperCase() : x);
++const pxButton = (id, label, on = false) => { const t = theme(); return h_flex().id(id).h(22).px(7).gap(6).flex_none().items_center().whitespace_nowrap()
++  .border_1().border_color(on ? t.accent : t.border).text_size(11.5).text_color(on ? t.foreground : t.muted)
++  .child(caps(label)).when(on, (e) => e.child(div().size(5).flex_none().bg(t.accent))); };
++function button(id, label, o = {}) {
++  if (!themed()) return uiButton(id, label, o);
++  const t = theme(), { kind = "secondary", size = "sm", icon = null, disabled = false, onClick = null } = o;
++  const live = !disabled && Boolean(onClick);
++  return h_flex().id(id).h(size === "lg" ? 28 : size === "xs" ? 20 : 22).px(7).gap(6).flex_none().items_center().whitespace_nowrap()
++    .text_size(size === "lg" ? 12 : 11.5).font_medium()
++    .when(kind === "primary", (e) => e.border_1().border_color(t.accent).text_color(t.accent).font_semibold())
++    .when(kind === "secondary", (e) => e.border_1().border_color(t.border).text_color(t.muted))
++    .when(kind === "plain", (e) => e.text_color(t.muted))
++    .when(disabled, (e) => e.opacity(0.5))
++    .when(live, (e) => e.cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground))
++      .on_click((ev, cx) => { cx.stop_propagation(); onClick(ev, cx); cx.notify(); }))
++    .when(Boolean(icon), (e) => e.child(svg(icon).size(12).flex_none()))
++    .child(caps(label));
++}
++function segmented(id, options, value, onPick, o = {}) {
++  if (!themed()) return uiSegmented(id, options, value, onPick, o);
++  const t = theme();
++  return h_flex().flex_none().gap(4).items_center().when(Boolean(o.fill), (e) => e.w_full()).when(Boolean(o.disabled), (e) => e.opacity(0.5))
++    .children(options.map(([v, label, x]) => {
++      const on = v === value, off = Boolean(o.disabled) || Boolean(x?.disabled);
++      return pxButton(`${id}-${v}`, label, on).when(Boolean(o.fill), (e) => e.flex_1().justify_center()).when(Boolean(x?.tip), (e) => e.tooltip(x.tip))
++        .when(!on && Boolean(x?.disabled), (e) => e.text_color(t.dim).opacity(0.6))
++        .when(!on && !off, (e) => e.cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground))
++          .on_click((ev, cx) => { cx.stop_propagation(); onPick(v, ev, cx); cx.notify(); }));
++    }));
++}
++// <<< personal-herdr-desktop
+ 
+ const BAR = 48;                      // the toolbar's height
+ const MARGIN = 24;                   // room around a fitted image

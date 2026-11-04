@@ -2,6 +2,8 @@ import { View, div, svg } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { spaces, agents, theme, run, window, shared, panes, layout, exec, home } from "herdr";
 const GS = () => ({ workbench: "gw", fortress: "gf" })[shared("layout")] ?? "g";
+// The workbench layout writes its labels in capitals (DESK, SHEPHERDR, MONITOR, BUS 1 · THIS COMPUTER).
+const caps = (x) => (shared("layout") === "workbench" ? String(x).toUpperCase() : x);
 
 // Shepherdr's tabs: show the open one (in whatever space it is), else open it here. Never duplicates.
 export function openShepherdr(view) {
@@ -37,12 +39,12 @@ export default class WorkspaceStatus extends View {
     const space = spaces().find(s => s.active);
     const list = agents();
     const needs = list.filter(a => a.status === "blocked").length;
-    const label = (icon, text) => h_flex().gap(6).items_center().child(svg(`mods/px-chrome/${GS()}/${icon}.svg`).size(13)).child(text);
+    const label = (icon, text) => h_flex().gap(6).items_center().child(svg(`mods/px-chrome/${GS()}/${icon}.svg`).size(13)).child(caps(text));
     return h_flex().size_full().px(14).gap(16).items_center().bg(t.chrome).border_t(1).border_color(t.border).text_size(11.8).text_color(t.muted)
       .child(label(space?.machine ? "server" : "monitor", space?.machine ?? "This computer"))
       .when(Boolean(space?.branch), el => el.child(label("branch", space.branch)))
-      .child(h_flex().gap(6).items_center().child(div().size(6).rounded(0).bg(t.dim)).child(`${list.length} agents`)
-        .when(needs > 0, el => el.child(div().text_color(t.blocked).child(`· ${needs} needs you`))))
+      .child(h_flex().gap(6).items_center().child(div().size(6).rounded(0).bg(t.dim)).child(caps(`${list.length} ${list.length === 1 ? "agent" : "agents"}`))
+        .when(needs > 0, el => el.child(div().text_color(t.blocked).child(caps(`· ${needs} needs you`)))))
       .child(div().flex_1())
       .when(!findNode(layout(), "pomodoro") && ["work", "break", "paused"].includes(shared("pomodoro")?.phase), el => {
         const p = shared("pomodoro"), left = (p.phase === "paused" ? p.left : p.end - Date.now()) / 1000;
@@ -81,6 +83,6 @@ export default class WorkspaceStatus extends View {
           .child(svg(v === "monitor" ? `mods/px-chrome/${GS()}/layers.svg` : `mods/px-tabs/${GS()}/shepherdr.svg`).size(12))
           .child(text).when(open, el => el.child(div().size(5).bg(t.accent)));
       }))
-      .child(div().id("palette").text_color(t.dim).on_click(() => run("app.palette")).child(`${window()?.platform === "macos" ? "⌘" : "Ctrl"} Shift P  commands`));
+      .child(div().id("palette").text_color(t.dim).on_click(() => run("app.palette")).child(caps(`${window()?.platform === "macos" ? "⌘" : "Ctrl"} Shift P  commands`)));
   }
 }

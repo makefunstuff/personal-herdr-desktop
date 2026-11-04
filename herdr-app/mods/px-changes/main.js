@@ -1,6 +1,8 @@
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, Scrollbar, v_virtual_list } from "gpui-base";
 import { spaces, panes, focused, exec, readTextFile, watchFolder, theme, settings, agents, hc, shared, setShared } from "herdr";
+// The workbench layout writes its headings and labels in capitals (SPACES, AGENTS, DESK ...).
+const caps = (x) => (shared("layout") === "workbench" ? String(x).toUpperCase() : x);
 
 // Review comments on diff lines, per repo root, in shared state (they survive reloads and show in every copy).
 const COMMENTS = "changes.comments";
@@ -324,7 +326,7 @@ export default class Changes extends View {
         if (e.key === "escape" && this.typing) { this.typing = false; this.handle.focus(); cx.stop_propagation(); cx.notify(); }
       })
       .child(h_flex().h(42).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)
-        .child(div().font_semibold().child("Changes"))
+        .child(div().font_semibold().child(caps("Changes")))
         .child(div().px(5).py(1).rounded(0).border_1().border_color(t.border).text_size(10).text_color(t.muted).child(`${this.files.length} files`))
         .child(div().flex_1()).child(div().text_size(11).text_color(t.ansi2).child(`+${add}`)).child(div().text_size(11).text_color(t.ansi1).child(`−${del}`)))
       .child(v_flex().id("changes-list").flex_none().h(Math.min(200, Math.max(44, this.files.length * 28 + 12))).overflow_y_scrollbar().p(6).border_b(1).border_color(t.border).children(this.files.map((f) => {
@@ -354,24 +356,24 @@ export default class Changes extends View {
         .child(h_flex().gap(6).text_size(11).text_color(t.dim)
           .child(div().text_color(t.accent).font_semibold().child("COMMENT"))
           .child(div().flex_1().min_w(0).truncate().child(this.target.side === "file" ? `${this.target.path} (whole file)` : `${this.target.path}:${this.target.line}${this.target.side === "old" ? " (removed)" : ""}`))
-          .child(div().id("cmt-cancel").cursor_pointer().hover((s) => s.text_color(t.foreground)).on_click((_e, cx) => { this.target = null; cx.notify(); }).child("cancel")))
+          .child(div().id("cmt-cancel").cursor_pointer().hover((s) => s.text_color(t.foreground)).on_click((_e, cx) => { this.target = null; cx.notify(); }).child(caps("cancel"))))
         .child(h_flex().gap(8)
           .child(div().id("comment-input").flex_1().min_w(0).h(30).px(10).flex().items_center().border_1().border_color(this.commenting ? t.accent : t.border).cursor_text()
             .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).child(Input.new(this.comment).h_full().text_size(12).text_color(t.foreground)))
           .child(div().id("comment-add").h(30).px(12).flex().items_center().bg(t.accent).text_color(t.accent_foreground).text_size(12).font_semibold().cursor_pointer()
-            .on_click((_e, cx) => { this.addComment(); cx.notify(); }).child("Add")))))
+            .on_click((_e, cx) => { this.addComment(); cx.notify(); }).child(caps("Add"))))))
       // The review so far: send it to an agent in this space, or clear it
       .when(comments.length > 0, (e) => e.child(h_flex().flex_none().px(10).pt(8).gap(6).items_center().flex_wrap().border_t(1).border_color(t.border).text_size(11)
         .child(div().text_color(t.accent).font_semibold().child(`${comments.length} COMMENT${comments.length === 1 ? "" : "S"}`))
         .child(div().flex_1())
-        .when(!reviewers.length, (el) => el.child(div().text_color(t.dim).child("no agent in this space")))
+        .when(!reviewers.length, (el) => el.child(div().text_color(t.dim).child(caps("no agent in this space"))))
         .children(reviewers.slice(0, 3).map((a) => div().id(`send-${a.address}`).h(24).px(8).flex().items_center().border_1().border_color(t.accent).text_color(t.accent)
           .cursor_pointer().hover((s) => s.bg(t.accent).text_color(t.accent_foreground)).on_click((_e, cx) => this.sendComments(a, cx))
-          .child(this.sending ? "Sending…" : `Send to ${a.tab_name || a.program?.name || a.address}`)))
+          .child(caps(this.sending ? "Sending…" : `Send to ${a.tab_name || a.program?.name || a.address}`))))
         .child(div().id("cmt-clear").h(24).px(8).flex().items_center().border_1().border_color(t.border).text_color(t.dim).cursor_pointer()
-          .hover((s) => s.text_color(t.foreground)).on_click((_e, cx) => { setCommentsFor(this.root, []); cx.notify(); }).child("Clear"))))
+          .hover((s) => s.text_color(t.foreground)).on_click((_e, cx) => { setCommentsFor(this.root, []); cx.notify(); }).child(caps("Clear")))))
       .child(h_flex().flex_none().p(10).gap(8).border_t(1).border_color(t.border)
         .child(div().id("commit-message").flex_1().min_w(0).h(32).px(10).flex().items_center().rounded(0).border_1().border_color(this.typing ? t.accent : t.border).cursor_text().on_mouse_down("left", (_e, cx) => cx.stop_propagation()).child(Input.new(this.input).h_full().text_size(12).text_color(t.foreground)))
-        .child(div().id("commit").h(32).px(14).flex().items_center().rounded(0).bg(enabled ? t.solid : t.raised).text_color(enabled ? t.solid_foreground : t.dim).text_size(12).when(enabled, (e) => e.cursor_pointer()).on_click((_e, cx) => this.commit(cx)).child(this.busy ? "Committing…" : "Commit")));
+        .child(div().id("commit").h(32).px(14).flex().items_center().rounded(0).bg(enabled ? t.solid : t.raised).text_color(enabled ? t.solid_foreground : t.dim).text_size(12).when(enabled, (e) => e.cursor_pointer()).on_click((_e, cx) => this.commit(cx)).child(caps(this.busy ? "Committing…" : "Commit"))));
   }
 }

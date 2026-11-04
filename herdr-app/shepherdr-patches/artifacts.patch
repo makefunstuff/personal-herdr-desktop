@@ -1,0 +1,110 @@
+diff -ruN a/artifacts/main.js b/artifacts/main.js
+--- a/artifacts/main.js	2026-11-04 22:12:53
++++ b/artifacts/main.js	2026-11-04 22:12:53
+@@ -10,12 +10,53 @@
+ // placeholder before one is picked (props.blank), and the title bar of an artifact window kept
+ // from before windows were cut (props.bar), so it can still be closed.
+ 
+-import { View, div, svg } from "gpui-kit";
++import { View, div, svg as gsvg } from "gpui-kit";
+ import { v_flex, h_flex, InputState, Input } from "gpui-base";
+ import { spaces, panes, agents, readTextFile, watchFolder, home, theme, closeOverlay, props, shared, setShared } from "herdr";
+ import { showInSidebar, backToList } from "./sidebar.js";
+ import { artifactCli as cli, showViewer } from "./artview.js";
+-import { toast, plainError, TEXT, RADIUS } from "./ui.js";
++import { toast, plainError, TEXT, RADIUS, button as uiButton, segmented as uiSegmented, themed } from "./ui.js";
++// >>> personal-herdr-desktop: the themed layouts' look (workbench, fortress, pixel): their own glyphs (px-chrome's set
++// for the layout) for Shepherdr's, labels in capitals in workbench, and buttons and segments drawn like the status
++// bar's DESK/SHEPHERDR/MONITOR: a 1px border; the accent border and a small accent dot on the one that's on.
++const PX_GLYPHS = new Set(["archive", "branch", "check", "chevron-down", "chevron-left", "chevron-right", "circle-check", "clock", "file-text", "files",
++  "folder-plus", "folder", "git-branch", "git-compare", "git-pull-request", "layers", "minus", "monitor", "panel-left", "panel-right", "pin-off", "pin",
++  "plus", "search", "server", "settings", "sidebar", "spinner", "square-pen", "square", "terminal", "users", "x"]);
++const pxGS = () => ({ workbench: "gw", fortress: "gf" })[shared("layout")] ?? "g";
++const pxIcon = (p) => { const m = themed() && /^mods\/[^/]+\/([a-z-]+)\.svg$/.exec(String(p)); return m && PX_GLYPHS.has(m[1]) ? `mods/px-chrome/${pxGS()}/${m[1]}.svg` : p; };
++const svg = (p) => gsvg(pxIcon(p));
++const caps = (x) => (typeof x === "string" && shared("layout") === "workbench" ? x.toUpperCase() : x);
++const pxButton = (id, label, on = false) => { const t = theme(); return h_flex().id(id).h(22).px(7).gap(6).flex_none().items_center().whitespace_nowrap()
++  .border_1().border_color(on ? t.accent : t.border).text_size(11.5).text_color(on ? t.foreground : t.muted)
++  .child(caps(label)).when(on, (e) => e.child(div().size(5).flex_none().bg(t.accent))); };
++function button(id, label, o = {}) {
++  if (!themed()) return uiButton(id, label, o);
++  const t = theme(), { kind = "secondary", size = "sm", icon = null, disabled = false, onClick = null } = o;
++  const live = !disabled && Boolean(onClick);
++  return h_flex().id(id).h(size === "lg" ? 28 : size === "xs" ? 20 : 22).px(7).gap(6).flex_none().items_center().whitespace_nowrap()
++    .text_size(size === "lg" ? 12 : 11.5).font_medium()
++    .when(kind === "primary", (e) => e.border_1().border_color(t.accent).text_color(t.accent).font_semibold())
++    .when(kind === "secondary", (e) => e.border_1().border_color(t.border).text_color(t.muted))
++    .when(kind === "plain", (e) => e.text_color(t.muted))
++    .when(disabled, (e) => e.opacity(0.5))
++    .when(live, (e) => e.cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground))
++      .on_click((ev, cx) => { cx.stop_propagation(); onClick(ev, cx); cx.notify(); }))
++    .when(Boolean(icon), (e) => e.child(svg(icon).size(12).flex_none()))
++    .child(caps(label));
++}
++function segmented(id, options, value, onPick, o = {}) {
++  if (!themed()) return uiSegmented(id, options, value, onPick, o);
++  const t = theme();
++  return h_flex().flex_none().gap(4).items_center().when(Boolean(o.fill), (e) => e.w_full()).when(Boolean(o.disabled), (e) => e.opacity(0.5))
++    .children(options.map(([v, label, x]) => {
++      const on = v === value, off = Boolean(o.disabled) || Boolean(x?.disabled);
++      return pxButton(`${id}-${v}`, label, on).when(Boolean(o.fill), (e) => e.flex_1().justify_center()).when(Boolean(x?.tip), (e) => e.tooltip(x.tip))
++        .when(!on && Boolean(x?.disabled), (e) => e.text_color(t.dim).opacity(0.6))
++        .when(!on && !off, (e) => e.cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground))
++          .on_click((ev, cx) => { cx.stop_propagation(); onPick(v, ev, cx); cx.notify(); }));
++    }));
++}
++// <<< personal-herdr-desktop
+ 
+ const ICON = "mods/artifacts/artifacts.svg";
+ const modOf = (machine, id) => (machine ? `art-${machine.replace(/[^A-Za-z0-9_-]+/g, "-")}-${id}` : `art-${id}`);
+@@ -166,8 +207,8 @@
+     const shown = q ? this.items.filter((a) => this.found(a, q)) : this.items;
+     return v_flex().id("artifacts").size_full().min_h(0).rounded(RADIUS.card).overflow_hidden().bg(t.background).border_1().border_color(t.border).text_color(t.foreground).text_size(TEXT.body)
+       .child(h_flex().h(42).flex_none().pl(14).pr(8).gap(8).items_center().border_b(1).border_color(t.border)
+-        .child(div().font_semibold().child("Artifacts"))
+-        .child(div().flex_1().min_w(0).truncate().text_size(TEXT.label).text_color(t.dim).child(this.all ? "All folders" : this.store?.name ?? ""))
++        .child(div().font_semibold().child(caps("Artifacts")))
++        .child(div().flex_1().min_w(0).truncate().text_size(TEXT.label).text_color(t.dim).child(this.all ? caps("All folders") : this.store?.name ?? ""))
+         .child(this.toggle("art-all", "All", this.all, t, (cx) => { this.all = !this.all; this.loaded = null; cx.spawn(async (cx) => this.load(cx)); })))
+       .when(Boolean(this.store), (el) => el.child(this.searchField(t)))
+       // A press in the list gives it the keyboard: F then goes to the search field.
+@@ -220,13 +261,15 @@
+   emptyView(t) {
+     return v_flex().px(18).py(28).gap(6).items_center()
+       .child(svg(ICON).size(16).flex_none().text_color(t.dim))
+-      .child(div().pt(4).font_medium().child("No artifacts."))
++      .child(div().pt(4).font_medium().child(caps("No artifacts.")))
+       .child(div().max_w(250).text_center().text_size(TEXT.label).text_color(t.muted)
+         .child(this.all ? "Reports, boards and forms agents make show here."
+           : `Reports, boards and forms agents make for ${this.store.name} show here. Ask an agent to make one.`));
+   }
+ 
+   toggle(id, label, on, t, fn) {
++    if (themed()) return pxButton(id, label, on).cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground))
++      .on_click((_e, cx) => { fn(cx); cx.notify(); });
+     return h_flex().id(id).h(24).px(8).flex_none().items_center().rounded(RADIUS.control).cursor_pointer().text_size(TEXT.label).font_medium()
+       .bg(on ? t.selected : t.background).text_color(on ? t.foreground : t.muted)
+       .hover((s) => s.bg(on ? t.selected : t.hover).text_color(t.foreground))
+@@ -319,7 +362,7 @@
+         .text_size(TEXT.label).text_color(t.muted).hover((s) => s.bg(t.hover).text_color(t.foreground))
+         .on_click((_e, cx) => { cx.stop_propagation(); if (marking) setShared("artifacts.markup", null); backToList(); })
+         .child(svg("mods/workspace-chrome/chevron-left.svg").size(14).flex_none())
+-        .child("Artifacts"))
++        .child(caps("Artifacts")))
+       .child(div().flex_1().min_w(0).truncate().font_semibold().child(title))
+       .when(Boolean(v), (el) => el.child(h_flex().flex_none().items_center()
+         .when(kept.length > 1 || older, (row) => row.child(arrow("art-v-prev", "mods/workspace-chrome/chevron-left.svg", prev, `v${prev}`)))
+@@ -332,8 +375,11 @@
+           .child(h_flex().id("art-latest").h(24).px(6).flex_none().items_center().rounded(RADIUS.control).cursor_pointer()
+             .text_size(TEXT.label).font_medium().text_color(t.accent).hover((s) => s.bg(t.hover)).tooltip(`v${latest}`)
+             .on_click((_e, cx) => { cx.stop_propagation(); step(null, cx); })
+-            .child("Latest ›")))))
+-      .when(Boolean(v), (el) => el.child(h_flex().id("art-markup").h(24).pl(5).pr(8).gap(5).flex_none().items_center().rounded(RADIUS.control).cursor_pointer()
++            .child(caps("Latest ›"))))))
++      .when(Boolean(v) && themed(), (el) => el.child(pxButton("art-markup", marking ? "Done" : "Mark up", marking).cursor_pointer()
++        .hover((s) => s.bg(t.hover).text_color(t.foreground))
++        .on_click((_e, cx) => { cx.stop_propagation(); setShared("artifacts.markup", marking ? null : { mod: v.mod, where: "panel", at: Date.now() }); cx.notify(); })))
++      .when(Boolean(v) && !themed(), (el) => el.child(h_flex().id("art-markup").h(24).pl(5).pr(8).gap(5).flex_none().items_center().rounded(RADIUS.control).cursor_pointer()
+         .text_size(TEXT.label).font_medium().text_color(marking ? t.foreground : t.muted).when(marking, (b) => b.bg(t.selected))
+         .hover((s) => s.bg(marking ? t.selected : t.hover).text_color(t.foreground))
+         .on_click((_e, cx) => { cx.stop_propagation(); setShared("artifacts.markup", marking ? null : { mod: v.mod, where: "panel", at: Date.now() }); cx.notify(); })

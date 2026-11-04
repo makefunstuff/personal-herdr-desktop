@@ -3,7 +3,16 @@
 
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { exec, home, theme } from "herdr";
+import { exec, home, theme, shared } from "herdr";
+
+// The workbench layout writes its headings and labels in capitals (SPACES, AGENTS, BUS 1 · THIS COMPUTER).
+const caps = (x) => (shared("layout") === "workbench" ? String(x).toUpperCase() : x);
+const GS = () => ({ workbench: "gw", fortress: "gf" })[shared("layout")] ?? "g";
+// A segmented meter like the Monitor's: thin cells, grey until it nears its limit (amber), then red.
+export function meterBar(t, pct, color, cells = 24) {
+  const on = Math.round((Math.max(0, Math.min(100, pct ?? 0)) / 100) * cells);
+  return h_flex().w_full().gap(1).children(Array.from({ length: cells }, (_, i) => div().flex_1().h(5).bg(i < on ? color : t.raised)));
+}
 
 const EVERY = 5 * 60 * 1000;
 const INSTALL = "github.com/makefunstuff/herdr-android/tree/main/host/herdr-usage";
@@ -66,30 +75,34 @@ export default class Usage extends View {
     });
   }
 
+  // Grey while there's room; amber near the limit, red at it (the Monitor's meters).
   color(pct) {
     const t = theme();
-    return pct >= 90 ? t.blocked : pct >= 70 ? t.working : t.done;
+    return pct >= 90 ? t.blocked : pct >= 70 ? t.working : t.muted;
+  }
+  tone(pct) {
+    const t = theme();
+    return pct >= 90 ? t.blocked : pct >= 70 ? t.working : t.foreground;
   }
 
   row(l) {
     const t = theme();
     const pct = Math.min(100, Math.max(0, l.percent ?? 0));
     return v_flex().gap(3)
-      .child(h_flex().gap(6).items_center().text_size(11)
-        .child(div().flex_1().truncate().text_color(t.muted).child(l.name + (l.estimated ? " ~" : "")))
-        .when(Boolean(l.resets), (el) => el.child(div().text_size(10).text_color(t.dim).child(until(l.resets))))
-        .child(div().w(34).flex_none().text_color(this.color(pct)).child(`${Math.round(pct)}%`)))
-      .child(div().h(6).w_full().bg(t.raised).border(1).border_color(t.border)
-        .child(div().h_full().w(`${pct}%`).bg(this.color(pct))));
+      .child(h_flex().gap(6).items_center().text_size(10.5)
+        .child(div().flex_1().truncate().text_color(t.dim).child(caps(l.name + (l.estimated ? " ~" : ""))))
+        .when(Boolean(l.resets), (el) => el.child(div().text_size(10).text_color(t.dim).child(caps(until(l.resets)))))
+        .child(div().w(34).flex_none().text_color(this.tone(pct)).child(`${Math.round(pct)}%`)))
+      .child(meterBar(t, pct, this.color(pct)));
   }
 
   provider(p) {
     const t = theme();
     return v_flex().gap(5)
-      .child(h_flex().gap(6).items_center().text_size(11.5)
-        .child(div().flex_none().text_color(t.foreground).child(p.name))
-        .when(Boolean(p.plan), (el) => el.child(div().flex_1().min_w(0).truncate().text_size(10).text_color(t.dim).child(planName(p.plan))))
-        .when(Boolean(age(p.readAt)), (el) => el.child(div().flex_none().text_size(10).text_color(t.working).child(age(p.readAt)))))
+      .child(h_flex().gap(6).items_center().text_size(11)
+        .child(div().flex_none().font_semibold().text_color(t.foreground).child(caps(p.name)))
+        .when(Boolean(p.plan), (el) => el.child(div().flex_1().min_w(0).truncate().text_size(10).text_color(t.dim).child(caps(planName(p.plan)))))
+        .when(Boolean(age(p.readAt)), (el) => el.child(div().flex_none().text_size(10).text_color(t.working).child(caps(age(p.readAt))))))
       .when(Boolean(p.error), (el) => el.child(div().text_size(10.5).text_color(t.blocked).child(p.error)))
       .children((p.limits ?? []).map((l) => this.row(l)));
   }
@@ -101,14 +114,14 @@ export default class Usage extends View {
       .child(h_flex().id("usage-head").px(16).h(41).pt(14).pb(5).flex_none().items_center().justify_between()
         .tooltip("Refresh usage limits")
         .on_click((_e, cx) => this.refresh(cx, true))
-        .child(div().text_size(11.5).font_medium().text_color(t.dim).child("Usage"))
+        .child(div().text_size(11.5).font_medium().text_color(t.dim).child(caps("Usage")))
         .child(this.loading
-          ? svg("mods/px-chrome/g/spinner.svg").size(13).text_color(t.dim).spin(900)
+          ? svg(`mods/px-chrome/${GS()}/spinner.svg`).size(13).text_color(t.dim).spin(900)
           : div().text_size(10).text_color(t.dim).hover((s) => s.text_color(t.foreground))
             .child(this.data?.at ? hhmm(this.data.at) : "")))
       .child(v_flex().id("usage-list").flex_1().min_h(0).overflow_y_scrollbar().px(16).pb(10).gap(10)
         .when(Boolean(this.error), (el) => el.child(div().text_size(11).text_color(t.blocked).child(this.error)))
-        .when(!this.error && this.data && shown.length === 0, (el) => el.child(div().text_size(11).text_color(t.dim).child("No limits found.")))
+        .when(!this.error && this.data && shown.length === 0, (el) => el.child(div().text_size(11).text_color(t.dim).child(caps("No limits found."))))
         .children(shown.map((p) => this.provider(p))));
   }
 }

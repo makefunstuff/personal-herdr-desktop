@@ -1,0 +1,36 @@
+diff -ruN a/menu-tasks/main.js b/menu-tasks/main.js
+--- a/menu-tasks/main.js	2026-11-04 22:12:59
++++ b/menu-tasks/main.js	2026-11-04 22:12:59
+@@ -5,11 +5,21 @@
+ 
+ import { View, div, svg } from "gpui-kit";
+ import { v_flex, h_flex } from "gpui-base";
+-import { run, props, closeOverlay, openOverlay, theme, keys, exec, knownAgents, window } from "herdr";
++import { run, props, closeOverlay, openOverlay, theme, keys, exec, knownAgents, window, shared } from "herdr";
+ import { terminals, spaces, panes, inRender } from "./live.js";
+-import { TEXT, menuRow } from "./ui.js";
++import { TEXT, menuRow, themed } from "./ui.js";
+ import { tabMenu, appMenu } from "./core/menus.js";
+ import { rectOf, besideRow, agentIn, coordinatorIn, isCoordinator, isCoordinatorTab, entryFor, restartAgent, closeTab, taskOf, switchTask, renameTab, renameSpace, closeSpace } from "./coordinator.js";
++// >>> personal-herdr-desktop: the themed layouts' look (workbench, fortress, pixel): their own glyphs (px-chrome's set
++// for the layout) for Shepherdr's, labels in capitals in workbench, and buttons and segments drawn like the status
++// bar's DESK/SHEPHERDR/MONITOR: a 1px border; the accent border and a small accent dot on the one that's on.
++const PX_GLYPHS = new Set(["archive", "branch", "check", "chevron-down", "chevron-left", "chevron-right", "circle-check", "clock", "file-text", "files",
++  "folder-plus", "folder", "git-branch", "git-compare", "git-pull-request", "layers", "minus", "monitor", "panel-left", "panel-right", "pin-off", "pin",
++  "plus", "search", "server", "settings", "sidebar", "spinner", "square-pen", "square", "terminal", "users", "x"]);
++const pxGS = () => ({ workbench: "gw", fortress: "gf" })[shared("layout")] ?? "g";
++const pxIcon = (p) => { const m = themed() && /^mods\/[^/]+\/([a-z-]+)\.svg$/.exec(String(p)); return m && PX_GLYPHS.has(m[1]) ? `mods/px-chrome/${pxGS()}/${m[1]}.svg` : p; };
++const caps = (x) => (typeof x === "string" && shared("layout") === "workbench" ? x.toUpperCase() : x);
++// <<< personal-herdr-desktop
+ 
+ // Where a space is now: its first terminal's live folder, else where it was made.
+ function place(s) {
+@@ -209,7 +219,7 @@
+           v_flex()
+             .when(i > 0 && (it[1].endsWith(".close") || it[0] === "Keybinds" || (it[1] === "app.theme" && list[i - 1][1] !== "app.theme")), el => el.child(div().mx(8).my(4).h(1).bg(t.border)))
+             // lib/ui.js's 32 menu row; the keyboard's row is selected too.
+-            .child(menuRow(`mi-${i}`, it[0], { icon: menuIcon(it[1]), hint: shortcut(it[1], it[2]), onClick: (_e, cx) => this.choose(i, cx) })
++            .child(menuRow(`mi-${i}`, caps(it[0]), { icon: pxIcon(menuIcon(it[1])), hint: shortcut(it[1], it[2]), onClick: (_e, cx) => this.choose(i, cx) })
+               .on_mouse_down("left", (e) => { this.rowAt = rectOf(e); })
+               .when(i === this.at, (el) => el.bg(t.selected))),
+         ),

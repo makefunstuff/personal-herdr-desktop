@@ -105,9 +105,11 @@ export default class Time extends View {
     const t = theme(), today = day(new Date());
     const samples = this.range === "today" ? (this.days[today] ?? []) : Object.values(this.days).flat();
     const s = this.sum(samples), any = Object.values(this.days).some((x) => x.length);
-    const tab = (id, label) => div().id(`rng-${id}`).h(20).px(8).flex().items_center().text_size(10).font_semibold().cursor_pointer()
-      .when(this.range === id, (e) => e.bg(t.accent).text_color(t.accent_foreground)).when(this.range !== id, (e) => e.border_1().border_color(t.border).text_color(t.dim))
-      .on_click((_e, cx) => { this.range = id; cx.notify(); }).child(caps(label));
+    // Like the status bar's DESK/MONITOR: a 1px border; the accent border and a small accent dot on the one shown.
+    const tab = (id, label) => { const on = this.range === id;
+      return div().id(`rng-${id}`).h(20).px(7).gap(6).flex().items_center().text_size(10).font_semibold().cursor_pointer()
+        .border_1().border_color(on ? t.accent : t.border).text_color(on ? t.foreground : t.dim).hover((s) => s.bg(t.hover).text_color(t.foreground))
+        .on_click((_e, cx) => { this.range = id; cx.notify(); }).child(caps(label)).when(on, (e) => e.child(div().size(5).bg(t.accent))); };
     const body = v_flex().id("time-body").flex_1().min_h(0).overflow_y_scrollbar().px(10).pb(12);
     if (!any) body.child(v_flex().pt(12).gap(6).text_size(12).text_color(t.dim)
       .child(div().child("No samples yet. The tracker isn't running."))
@@ -134,7 +136,7 @@ export default class Time extends View {
     }
     return v_flex().id("time").size_full().min_h(0).overflow_hidden().bg(t.surface).border_1().border_color(t.border).text_color(t.foreground).text_size(13)
       .child(h_flex().h(42).flex_none().px(14).gap(6).items_center().border_b(1).border_color(t.border)
-        .child(div().font_semibold().child(caps("Time"))).child(div().flex_1()).child(tab("today", "Today")).child(tab("week", "7 days")))
+        .child(div().font_semibold().child(caps("Time"))).child(div().flex_1()).child(h_flex().gap(4).child(tab("today", "Today")).child(tab("week", "7 days"))))
       .child(body);
   }
 }
