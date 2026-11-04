@@ -43,7 +43,7 @@ function statsNow() {
 export default class Desk extends View {
   init(_props, cx) {
     this.tick = 0; this.note = null; this.day = ymd(new Date()); this.days = []; this.err = null;
-    this.input = InputState.new({ value: "", placeholder: "Add a note… ([ ] for a checkbox, Enter)" });
+    this.input = InputState.new({ value: "", placeholder: "Add a note…  [ ] for a to-do" });
     this.input.on("submit", (_e, cx) => cx.spawn(async (cx) => { await this.addNote(); cx.notify(); }));
     // Editing one note in place: its words only (a checkbox keeps its box, a timed note its time).
     this.editing = null; // line number in the day's file
@@ -222,37 +222,38 @@ export default class Desk extends View {
   notesView(t) {
     const lines = (this.note ?? "").split("\n");
     const rows = [];
-    // edit / × at a note's end; the note being edited shows the input instead of its words.
-    const tools = (n, l) => h_flex().flex_none().gap(2).items_center()
-      .child(div().id(`ne-${n}`).px(3).text_size(10).text_color(t.dim).cursor_pointer().hover((s) => s.text_color(t.accent))
-        .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
-        .on_click((_e, cx) => { cx.stop_propagation(); this.startEdit(n, cx); }).child(caps("edit")))
-      .child(div().id(`nx-${n}`).px(3).text_size(11).text_color(t.dim).cursor_pointer().hover((s) => s.text_color(t.blocked))
-        .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+    // Long words (paths, identifiers) wrap instead of running off the edge: a break chance every 18 characters.
+    const soft = (x) => String(x);
+    // Hover shows the note's ×; a click on its words edits it.
+    const row = (n, l, lead, words, dim, strike) => h_flex().id(`nl-${n}`).w_full().gap(8).px(4).py(3).items_start()
+      .when(this.hoverNote === n, (e) => e.bg(t.hover))
+      .on_hover((h, cx) => { if (h) this.hoverNote = n; else if (this.hoverNote === n) this.hoverNote = null; cx.notify(); })
+      .child(lead)
+      .child(div().id(`nw-${n}`).flex_1().min_w(0).text_size(12).cursor_text().text_color(dim ? t.dim : t.foreground).when(strike, (e) => e.line_through())
+        .on_click((_e, cx) => this.startEdit(n, cx)).child(soft(words)))
+      .child(div().id(`nx-${n}`).w(14).flex_none().text_center().text_size(12).cursor_pointer()
+        .text_color(this.hoverNote === n ? t.dim : t.background).hover((s) => s.text_color(t.blocked))
         .on_click((_e, cx) => { cx.stop_propagation(); cx.spawn(async (cx) => this.rewriteLine(n, l, null, cx)); }).child("×"));
-    const editor = (n) => h_flex().w_full().items_center().border_1().border_color(t.accent).bg(t.input)
+    const editor = (n, lead) => h_flex().w_full().gap(8).px(4).py(2).items_center().bg(t.hover)
       .on_key_down((e, cx) => { if (e.key === "escape") { this.editing = null; cx.stop_propagation(); cx.notify(); } })
-      .child(Input.new(this.editInput).flex_1().h(26).px(6).rounded(0).border_0().bg(t.input).text_size(12).text_color(t.foreground))
-      .child(div().id(`ns-${n}`).px(6).text_size(10).text_color(t.accent).cursor_pointer().on_click((_e, cx) => cx.spawn(async (cx) => this.saveEdit(cx))).child(caps("save")))
-      .child(div().id(`nc-${n}`).px(6).text_size(10).text_color(t.dim).cursor_pointer().on_click((_e, cx) => { this.editing = null; cx.notify(); }).child(caps("cancel")));
+      .child(lead)
+      .child(div().flex_1().min_w(0).border_b(1).border_color(t.accent)
+        .child(Input.new(this.editInput).w_full().h(24).px(0).rounded(0).border_0().bg(t.hover).text_size(12).text_color(t.foreground)))
+      .child(div().id(`ns-${n}`).px(4).text_size(10).font_semibold().text_color(t.accent).cursor_pointer().on_click((_e, cx) => cx.spawn(async (cx) => this.saveEdit(cx))).child(caps("save")));
+    const box = (n, done) => div().id(`nb-${n}`).w(12).h(12).mt(2).flex_none().cursor_pointer().border_1()
+      .border_color(done ? t.done : t.muted).bg(done ? t.done : t.input).hover((s) => s.border_color(t.accent))
+      .on_click((_e, cx) => { cx.stop_propagation(); cx.spawn(async (cx) => this.toggleLine(n, cx)); });
+    const time = (x) => div().w(36).flex_none().text_size(10.5).text_color(t.dim).child(x);
     lines.forEach((l, n) => {
       const cb = /^- \[( |x)\] ?(.*)$/.exec(l), bullet = /^- (.*)$/.exec(l);
-      if (this.editing === n && (cb || bullet || (l.trim() && !l.startsWith("# ")))) { rows.push(editor(n)); return; }
       if (cb) {
         const done = cb[1] === "x";
-        rows.push(h_flex().id(`nl-${n}`).w_full().gap(8).py(2).items_start().cursor_pointer().hover((s) => s.bg(t.hover))
-          .on_click((_e, cx) => cx.spawn(async (cx) => this.toggleLine(n, cx)))
-          .child(div().w(12).h(12).mt(2).flex_none().border_1().border_color(done ? t.done : t.border).bg(done ? t.done : t.input))
-          .child(div().flex_1().min_w(0).text_size(12).text_color(done ? t.dim : t.foreground).when(done, (e) => e.line_through()).child(cb[2]))
-          .child(tools(n, l)));
+        rows.push(this.editing === n ? editor(n, box(n, done)) : row(n, l, box(n, done), cb[2], done, done));
       } else if (bullet) {
         const m = /^(\d\d:\d\d) (.*)$/.exec(bullet[1]);
-        rows.push(h_flex().w_full().gap(8).py(2).items_start()
-          .child(div().w(36).flex_none().text_size(10.5).text_color(t.dim).child(m ? m[1] : "·"))
-          .child(div().flex_1().min_w(0).text_size(12).child(m ? m[2] : bullet[1]))
-          .child(tools(n, l)));
+        rows.push(this.editing === n ? editor(n, time(m ? m[1] : "·")) : row(n, l, time(m ? m[1] : "·"), m ? m[2] : bullet[1], false, false));
       } else if (l.trim() && !l.startsWith("# ")) {
-        rows.push(h_flex().w_full().gap(8).py(2).items_start().child(div().flex_1().min_w(0).text_size(12).text_color(t.muted).child(l)).child(tools(n, l)));
+        rows.push(this.editing === n ? editor(n, time("")) : row(n, l, time(""), l, true, false));
       }
     });
     return v_flex().w_full().px(12).gap(2)
@@ -278,6 +279,7 @@ export default class Desk extends View {
         .when(Boolean(this.err), (e) => e.child(div().mx(12).mt(8).text_size(11).text_color(t.blocked).child(this.err)))
         .child(this.section(t, "Pomodoro", null)).child(this.timer(t))
         .child(this.section(t, "Focus")).child(this.statsView(t))
-        .child(this.section(t, "Notes", this.day === ymd(now) ? "today" : this.day)).child(this.notesView(t)));
+        .child(this.section(t, "Notes", (() => { const open = ((this.note ?? "").match(/^- \[ \]/gm) ?? []).length;
+          return `${open ? `${open} to do · ` : ""}${this.day === ymd(now) ? "today" : this.day}`; })())).child(this.notesView(t)));
   }
 }
