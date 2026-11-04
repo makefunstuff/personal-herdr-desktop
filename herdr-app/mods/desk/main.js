@@ -100,6 +100,11 @@ export default class Desk extends View {
     } catch (e) { this.err = `Note not saved: ${e.message}`; }
     await this.loadNotes(); cx.notify();
   }
+  // Words that start with a checkbox in any of the usual spellings ([ ], [], -[], - [ ], [x]): { done, text }.
+  boxOf(text) {
+    const m = /^-?\s*\[( |x|X)?\]\s*(.*)$/.exec(text.trim());
+    return m ? { done: (m[1] ?? "").toLowerCase() === "x", text: m[2] } : null;
+  }
   // A note's line, split into what stays (its "- [ ] " or "- 12:05 ") and its words.
   parts(l) {
     const cb = /^(- \[(?: |x)\] ?)(.*)$/.exec(l); if (cb) return [cb[1], cb[2]];
@@ -118,7 +123,10 @@ export default class Desk extends View {
       const lines = (await fs.readFile(`${NOTES()}/${this.day}.md`, "utf8")).split("\n");
       if (lines[n] !== shown) { this.err = "The note changed meanwhile; try again."; }
       else {
-        if (text === null) lines.splice(n, 1); else lines[n] = this.parts(shown)[0] + text;
+        const box = text === null ? null : this.boxOf(text);
+        if (text === null) lines.splice(n, 1);
+        else if (box) lines[n] = `- [${box.done ? "x" : " "}] ${box.text}`; // written as a checkbox: it becomes one
+        else lines[n] = this.parts(shown)[0] + text;
         await this.writeNote(this.day, lines.join("\n")); this.err = null;
       }
     } catch (e) { this.err = `Note not saved: ${e.message}`; }
@@ -135,8 +143,8 @@ export default class Desk extends View {
   async addNote() {
     const text = this.input.value().trim(); if (!text) return;
     const day = ymd(new Date()), now = new Date();
-    const box = /^(- )?\[ ?\]\s*(.*)$/.exec(text);
-    const line = box ? `- [ ] ${box[2]}` : `- ${pad(now.getHours())}:${pad(now.getMinutes())} ${text}`;
+    const box = this.boxOf(text);
+    const line = box ? `- [${box.done ? "x" : " "}] ${box.text}` : `- ${pad(now.getHours())}:${pad(now.getMinutes())} ${text}`;
     try {
       let cur = ""; try { cur = await fs.readFile(`${NOTES()}/${day}.md`, "utf8"); } catch { cur = `# ${day}\n`; }
       await this.writeNote(day, (cur.endsWith("\n") ? cur : cur + "\n") + line + "\n");
