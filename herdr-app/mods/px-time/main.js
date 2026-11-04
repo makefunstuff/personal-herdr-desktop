@@ -23,10 +23,10 @@ function classify(r) {
   if (app === "herdr-app") { cat = "Herdr"; project = r.space || "Herdr"; }
   else if (app === "slack") cat = "Slack";
   else if (app.includes("hey") || /gmail|outlook|mail/i.test(title)) cat = "Mail";
-  else if (/chromium|chrome|firefox|brave/.test(app)) {
+  else if (/chromium|chrome|firefox|brave|safari|arc|edge|zen/.test(app)) {
     cat = /meet\.google|Meet -|zoom/i.test(title) ? "Meetings" : /pull request|github/i.test(title) ? "GitHub" : /google cloud|console\.cloud|gcp|kubernetes engine|cloud monitoring/i.test(title) ? "Google Cloud"
       : /jira|atlassian|confluence/i.test(title) ? "Jira" : /grafana|sentry|argo/i.test(title) ? "Observability" : /slack/i.test(title) ? "Slack" : "Browsing";
-  } else if (/alacritty|ghostty|kitty|foot/.test(app)) cat = "Terminal";
+  } else if (/alacritty|ghostty|kitty|foot|terminal|iterm|wezterm/.test(app)) cat = "Terminal";
   if (!project && tickets.length) project = tickets[0];
   return { cat, project, tickets };
 }
@@ -111,7 +111,7 @@ export default class Time extends View {
     const body = v_flex().id("time-body").flex_1().min_h(0).overflow_y_scrollbar().px(10).pb(12);
     if (!any) body.child(v_flex().pt(12).gap(6).text_size(12).text_color(t.dim)
       .child(div().child("No samples yet. The tracker isn't running."))
-      .child(div().text_size(11).child("Start it: systemctl --user enable --now herdr-timetrack (samples the focused window every 30 s, kept in ~/.local/share/herdr-timetrack)")));
+      .child(div().text_size(11).child("Start it: systemctl --user enable --now herdr-timetrack, on a Mac ./install.sh --timetrack (samples the focused window every 30 s, kept in ~/.local/share/herdr-timetrack)")));
     else {
       body.child(h_flex().w_full().mt(10).gap(6)
         .child(v_flex().flex_1().px(8).py(5).border_1().border_color(t.accent).bg(t.chrome).child(div().text_size(9.5).text_color(t.dim).child(caps("active"))).child(div().text_size(20).font_semibold().text_color(t.accent).child(hm(s.active))))

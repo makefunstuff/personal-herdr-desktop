@@ -1,4 +1,5 @@
-// CPU, GPU (NVIDIA via nvidia-smi, AMD and Intel via sysfs), RAM and local disk use, for the sidebar. One shell call every few seconds.
+// CPU, GPU (NVIDIA via nvidia-smi, AMD and Intel via sysfs; on macOS the Apple GPU via ioreg), RAM and local disk use, for
+// the sidebar. One shell call every few seconds.
 
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
@@ -8,7 +9,19 @@ const EVERY = 3000;
 const MAX_DISKS = 4;
 
 // One line per reading: "cpu …" (/proc/stat), Mem*, "df …" (local disks), "gpu …" (NVIDIA), "amd …" (sysfs).
+// macOS: "cpupct <sum of processes' %> <cores>" (ps), Mem* from sysctl and vm_stat (free, inactive, speculative and
+// purgeable pages count as available), the Data volume as "/" and other local volumes (not Time Machine's
+// snapshots), "mgpu 0 <busy %>" (ioreg's IOAccelerator).
 const SAMPLE = `
+if [ "$(uname)" = Darwin ]; then
+  echo "cpupct $(ps -A -o %cpu= | awk '{s+=$1} END {print s+0}') $(/usr/sbin/sysctl -n hw.ncpu)"
+  echo "MemTotal: $(( $(/usr/sbin/sysctl -n hw.memsize) / 1024 ))"
+  vm_stat | awk '/page size of/ {ps=$8} /^Pages (free|inactive|speculative|purgeable):/ {a+=$NF+0} END {print "MemAvailable:", int(a*ps/1024)}'
+  df -P -k /System/Volumes/Data 2>/dev/null | tail -n +2 | sed 's#/System/Volumes/Data$#/#; s/^/df /'
+  df -P -l -k 2>/dev/null | tail -n +2 | grep -v '^com[.]apple' | grep ' /Volumes/' | sed 's/^/df /'
+  /usr/sbin/ioreg -r -d 1 -c IOAccelerator 2>/dev/null | grep -o '"Device Utilization %"=[0-9]*' | head -1 | sed 's/.*=/mgpu 0 /'
+  exit 0
+fi
 [ -r /proc/stat ] && head -1 /proc/stat
 grep -E '^(MemTotal|MemAvailable):' /proc/meminfo 2>/dev/null
 df -P -l -x tmpfs -x devtmpfs -x efivarfs -x overlay -x squashfs 2>/dev/null | tail -n +2 | sed 's/^/df /'
@@ -47,6 +60,10 @@ export default class SysMon extends View {
           const total = n.reduce((a, b) => a + b, 0);
           if (this.prev) s.cpu = 100 * (1 - (idle - this.prev.idle) / Math.max(1, total - this.prev.total));
           this.prev = { idle, total };
+        } else if (f[0] === "cpupct") {
+          s.cpu = Number(f[1]) / Math.max(1, Number(f[2]));
+        } else if (f[0] === "mgpu") {
+          s.gpus.push({ index: f[1], util: Number(f[2]) });
         } else if (f[0] === "MemTotal:" || f[0] === "MemAvailable:") {
           mem[f[0]] = Number(f[1]);
         } else if (f[0] === "df") {
@@ -68,7 +85,7 @@ export default class SysMon extends View {
       }
       if (mem["MemTotal:"]) s.ram = 100 * (1 - mem["MemAvailable:"] / mem["MemTotal:"]);
       s.disks = s.disks.sort((a, b) => a.mount.length - b.mount.length).slice(0, MAX_DISKS);
-      s.linux = this.prev != null;
+      s.linux = this.prev != null || s.cpu != null; // CPU known (Linux after two samples, macOS at once)
       s.ramUsed = (mem["MemTotal:"] - mem["MemAvailable:"]) * 1024;
       s.ramTotal = mem["MemTotal:"] * 1024;
       this.s = s;
