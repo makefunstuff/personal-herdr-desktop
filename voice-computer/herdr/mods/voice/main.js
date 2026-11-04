@@ -60,11 +60,16 @@ export default class Voice extends View {
       cx.spawn(async (cx) => {
         for (;;) {
           const c = await nextCommand();
+          // One key's failure never ends this loop (it takes every voice key).
+          try {
           if (c === "dictate") await this.dictate();
           else if (c === "overlay") this.toggleWindow();
           else if (c === "quiet") await cmd("quiet", "toggle");
           else if (c === "talk" && !this.st) { this.started = true; await exec(VC(), ["start"]).catch(() => null); }
           else if (["talk", "confirm", "decline", "cancel"].includes(c)) await cmd(c);
+          } catch (e) {
+            notify({ title: "Voice", body: oneLine(`That key failed: ${e?.message ?? e}`, 200), level: "warning", timeout: 5000 });
+          }
           cx.notify();
         }
       });
@@ -88,7 +93,8 @@ export default class Voice extends View {
       await exec("sh", ["-c", 'printf %s "$1" | pbcopy', "x", text]);
       run("pane.focus", { pane: at.pane });
       run("terminal.paste");
-      if (old != null) setTimeout(() => exec("sh", ["-c", 'printf %s "$1" | pbcopy', "x", old]).catch(() => {}), 800);
+      // The clipboard back once the paste has read it (Herdr's mods have no setTimeout: a shell waits).
+      if (old != null) exec("sh", ["-c", 'sleep 0.8; printf %s "$1" | pbcopy', "x", old]).catch(() => {});
       return;
     }
     const p = f?.pane ? panes().find((x) => x.pane === f.pane) : null;
