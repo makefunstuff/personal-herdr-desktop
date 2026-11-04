@@ -45,6 +45,10 @@ export default class Desk extends View {
     this.tick = 0; this.note = null; this.day = ymd(new Date()); this.days = []; this.err = null;
     this.input = InputState.new({ value: "", placeholder: "Add a note… ([ ] for a checkbox, Enter)" });
     this.input.on("submit", (_e, cx) => cx.spawn(async (cx) => { await this.addNote(); cx.notify(); }));
+    // Editing one note in place: its words only (a checkbox keeps its box, a timed note its time).
+    this.editing = null; // line number in the day's file
+    this.editInput = InputState.new({ value: "", placeholder: "Edit the note (Enter saves, Esc cancels)" });
+    this.editInput.on("submit", (_e, cx) => cx.spawn(async (cx) => { await this.saveEdit(cx); }));
     cx.timer.every(1000, (cx) => {
       this.tick++; this.step();
       const ph = state().phase, shown = !findNode(layout(), "desk")?.hidden;
@@ -96,6 +100,38 @@ export default class Desk extends View {
     } catch (e) { this.err = `Note not saved: ${e.message}`; }
     await this.loadNotes(); cx.notify();
   }
+  // A note's line, split into what stays (its "- [ ] " or "- 12:05 ") and its words.
+  parts(l) {
+    const cb = /^(- \[(?: |x)\] ?)(.*)$/.exec(l); if (cb) return [cb[1], cb[2]];
+    const tm = /^(- \d\d:\d\d )(.*)$/.exec(l); if (tm) return [tm[1], tm[2]];
+    const b = /^(- )(.*)$/.exec(l); if (b) return [b[1], b[2]];
+    return ["", l];
+  }
+  startEdit(n, cx) {
+    const l = (this.note ?? "").split("\n")[n]; if (l == null) return;
+    this.editing = n; this.editInput.set_value(this.parts(l)[1]); this.editInput.focus?.(); cx.notify();
+  }
+  // Rewrites line n of the day's file (null text: removes it). The file is read again first, so a line added
+  // meanwhile (voice, another Desk) is kept; the line must still be what was shown.
+  async rewriteLine(n, shown, text, cx) {
+    try {
+      const lines = (await fs.readFile(`${NOTES()}/${this.day}.md`, "utf8")).split("\n");
+      if (lines[n] !== shown) { this.err = "The note changed meanwhile; try again."; }
+      else {
+        if (text === null) lines.splice(n, 1); else lines[n] = this.parts(shown)[0] + text;
+        await this.writeNote(this.day, lines.join("\n")); this.err = null;
+      }
+    } catch (e) { this.err = `Note not saved: ${e.message}`; }
+    await this.loadNotes(); cx.notify();
+  }
+  async saveEdit(cx) {
+    const n = this.editing; if (n == null) return;
+    const shown = (this.note ?? "").split("\n")[n], text = this.editInput.value().trim();
+    this.editing = null;
+    if (shown == null) { cx.notify(); return; }
+    await this.rewriteLine(n, shown, text ? text : null, cx); // emptied: the note goes
+  }
+
   async addNote() {
     const text = this.input.value().trim(); if (!text) return;
     const day = ymd(new Date()), now = new Date();
@@ -178,21 +214,37 @@ export default class Desk extends View {
   notesView(t) {
     const lines = (this.note ?? "").split("\n");
     const rows = [];
+    // edit / × at a note's end; the note being edited shows the input instead of its words.
+    const tools = (n, l) => h_flex().flex_none().gap(2).items_center()
+      .child(div().id(`ne-${n}`).px(3).text_size(10).text_color(t.dim).cursor_pointer().hover((s) => s.text_color(t.accent))
+        .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+        .on_click((_e, cx) => { cx.stop_propagation(); this.startEdit(n, cx); }).child(caps("edit")))
+      .child(div().id(`nx-${n}`).px(3).text_size(11).text_color(t.dim).cursor_pointer().hover((s) => s.text_color(t.blocked))
+        .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+        .on_click((_e, cx) => { cx.stop_propagation(); cx.spawn(async (cx) => this.rewriteLine(n, l, null, cx)); }).child("×"));
+    const editor = (n) => h_flex().w_full().items_center().border_1().border_color(t.accent).bg(t.input)
+      .on_key_down((e, cx) => { if (e.key === "escape") { this.editing = null; cx.stop_propagation(); cx.notify(); } })
+      .child(Input.new(this.editInput).flex_1().h(26).px(6).rounded(0).border_0().bg(t.input).text_size(12).text_color(t.foreground))
+      .child(div().id(`ns-${n}`).px(6).text_size(10).text_color(t.accent).cursor_pointer().on_click((_e, cx) => cx.spawn(async (cx) => this.saveEdit(cx))).child(caps("save")))
+      .child(div().id(`nc-${n}`).px(6).text_size(10).text_color(t.dim).cursor_pointer().on_click((_e, cx) => { this.editing = null; cx.notify(); }).child(caps("cancel")));
     lines.forEach((l, n) => {
       const cb = /^- \[( |x)\] ?(.*)$/.exec(l), bullet = /^- (.*)$/.exec(l);
+      if (this.editing === n && (cb || bullet || (l.trim() && !l.startsWith("# ")))) { rows.push(editor(n)); return; }
       if (cb) {
         const done = cb[1] === "x";
         rows.push(h_flex().id(`nl-${n}`).w_full().gap(8).py(2).items_start().cursor_pointer().hover((s) => s.bg(t.hover))
           .on_click((_e, cx) => cx.spawn(async (cx) => this.toggleLine(n, cx)))
           .child(div().w(12).h(12).mt(2).flex_none().border_1().border_color(done ? t.done : t.border).bg(done ? t.done : t.input))
-          .child(div().flex_1().min_w(0).text_size(12).text_color(done ? t.dim : t.foreground).when(done, (e) => e.line_through()).child(cb[2])));
+          .child(div().flex_1().min_w(0).text_size(12).text_color(done ? t.dim : t.foreground).when(done, (e) => e.line_through()).child(cb[2]))
+          .child(tools(n, l)));
       } else if (bullet) {
         const m = /^(\d\d:\d\d) (.*)$/.exec(bullet[1]);
         rows.push(h_flex().w_full().gap(8).py(2).items_start()
           .child(div().w(36).flex_none().text_size(10.5).text_color(t.dim).child(m ? m[1] : "·"))
-          .child(div().flex_1().min_w(0).text_size(12).child(m ? m[2] : bullet[1])));
+          .child(div().flex_1().min_w(0).text_size(12).child(m ? m[2] : bullet[1]))
+          .child(tools(n, l)));
       } else if (l.trim() && !l.startsWith("# ")) {
-        rows.push(div().w_full().py(2).text_size(12).text_color(t.muted).child(l));
+        rows.push(h_flex().w_full().gap(8).py(2).items_start().child(div().flex_1().min_w(0).text_size(12).text_color(t.muted).child(l)).child(tools(n, l)));
       }
     });
     return v_flex().w_full().px(12).gap(2)
