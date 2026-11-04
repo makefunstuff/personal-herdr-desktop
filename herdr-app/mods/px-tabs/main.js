@@ -1,6 +1,6 @@
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { spaces, panes, run, openOverlay, theme, window, shared, layout, settings } from "herdr";
+import { spaces, panes, run, openOverlay, theme, window, shared, layout, settings, readTextFile, appHome, focused } from "herdr";
 const GS = () => ({ workbench: "gw", fortress: "gf" })[shared("layout")] ?? "g";
 
 function find(node, id) {
@@ -17,8 +17,10 @@ const findNode = (n, id) => { if (!n || typeof n !== "object") return null; if (
   for (const c of n.children ?? []) { const f = findNode(c, id); if (f) return f; } return null; };
 
 export default class Tabs extends View {
-  init() {
+  init(_props, cx) {
     this.pressed = null;
+    this.pairMod = false; // Pair's panel is installed (mods/pair): its button shows
+    cx.spawn(async (cx) => { this.pairMod = Boolean(await readTextFile(`${appHome()}/mods/pair/main.js`).catch(() => null)); cx.notify(); });
     this.panels = JSON.parse(localStorage.getItem("panels") ?? "{}");
   }
 
@@ -106,6 +108,13 @@ export default class Tabs extends View {
           .on_click(() => run("layout.toggle", { id: "shepherdr" }))
           .child(svg(`mods/px-tabs/${GS()}/shepherdr.svg`).size(15))); })
       .child(button("tab-new", "+", () => openOverlay({ frame: "none", mod: "px-new-menu", kind: "popup", width: 250, height: 512 })))
+      // Pair's panel (pairing-buddy), beside the focused terminal; the same as its Alt-p. Only where Pair installed its mod.
+      // A second click closes the panel shown in this tab.
+      .when(this.pairMod, el => { const tab = focused()?.tab, open = panes().find(p => p.mod === "pair" && p.tab === tab);
+        return el.child(h_flex().id("panel-pair").h(26).px(8).gap(5).flex_none().items_center().rounded(0)
+        .text_size(12).bg(open ? t.selected : t.chrome).text_color(open ? t.foreground : t.muted).hover(s => s.bg(t.hover).text_color(t.foreground)).on_mouse_down("left", stop)
+        .on_click(() => open ? run("pane.close", { pane: open.pane }) : run("pane.split", { direction: "right", mod: "pair" }))
+        .child(svg("mods/pair/pair.svg").size(14)).child("Pair")); })
       .when(enabled.includes("files"), el => el.child(panelButton("files", "Files", `mods/px-files/${GS()}/file.svg`)))
       .when(enabled.includes("changes"), el => el.child(panelButton("changes", "Changes", `mods/px-changes/${GS()}/changes.svg`)))
       .when(Boolean(findNode(layout(), "pr")), el => el.child(panelButton("pr", "PR", "mods/task-pr/git-pull-request.svg")))
