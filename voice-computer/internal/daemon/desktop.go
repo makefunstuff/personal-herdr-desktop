@@ -139,7 +139,7 @@ func (d *Daemon) planReadApp(c intent.Call) *action {
 		if question == "" {
 			question = "What does this window show? Say the main things."
 		}
-		ans := d.readFor(ctx, question, app+" (an app window on this Mac)", text)
+		ans := d.readSource(ctx, question, app+"'s window", app+" (an app window on this Mac)", text)
 		if ans == "" {
 			ans = "I read " + app + " but couldn't make sense of it."
 		}
