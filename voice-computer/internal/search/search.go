@@ -19,6 +19,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 )
 
 // Result is one thing found.
@@ -162,6 +163,9 @@ func (c *Client) DeepSeek(ctx context.Context, query, asked string) ([]Result, e
 		text := r.Summary
 		if text == "" {
 			text = r.Snippet
+		}
+		if mostlyCJK(r.Title + " " + text) { // the owner hears English: Chinese, Japanese and Korean pages are skipped
+			continue
 		}
 		score := r.Rerank
 		if r.Authority != nil && *r.Authority > 0 {
@@ -385,4 +389,22 @@ func top(rs []Result) []Result {
 		rs = rs[:5]
 	}
 	return rs
+}
+
+// mostlyCJK says whether more than a fifth of a text's letters are Chinese, Japanese or Korean.
+func mostlyCJK(s string) bool { return MostlyCJK(s) }
+
+// MostlyCJK: see mostlyCJK.
+func MostlyCJK(s string) bool {
+	letters, cjk := 0, 0
+	for _, r := range s {
+		switch {
+		case unicode.In(r, unicode.Han, unicode.Hiragana, unicode.Katakana, unicode.Hangul):
+			cjk++
+			letters++
+		case unicode.IsLetter(r):
+			letters++
+		}
+	}
+	return letters > 0 && cjk*5 > letters
 }

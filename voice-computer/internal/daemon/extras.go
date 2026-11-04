@@ -145,8 +145,10 @@ func (d *Daemon) planWebSearch(c intent.Call) *action {
 		t0 := time.Now()
 		var rs []map[string]any
 		cached := false
-		if d.index != nil {
+		if d.index != nil && !timeSensitive.MatchString(q+" "+asked) { // a price or today's news is asked afresh
 			rs, cached = d.index.Cached(q, 7*24*time.Hour)
+			rs = skipCJK(rs) // kept before Chinese pages were skipped
+			cached = cached && len(rs) > 0
 		}
 		warn, backend := "", "cache"
 		if !cached {
@@ -172,7 +174,47 @@ func (d *Daemon) planWebSearch(c intent.Call) *action {
 		d.sec.lastWeb = rs
 		d.mu.Unlock()
 		say := joinText(warn, d.webSay(rs))
-		// The brain gets what was found (it may use it for a follow-up), source first.
+		// A price or a score is rarely in a snippet: the pages are read in turn (the one said first), and the
+		// brain answers from the first that gives a figure.
+		if timeSensitive.MatchString(q+" "+asked) && len(rs) > 0 && !hasDigit(say) && d.search != nil {
+			order := append([]map[string]any{}, rs...)
+			for i, r := range order {
+				if src, _ := r["source"].(string); src != "" && strings.Contains(say, src) {
+					order[0], order[i] = order[i], order[0]
+					break
+				}
+			}
+			for i, top := range order {
+				if i == 3 {
+					break
+				}
+				u, _ := top["url"].(string)
+				src, _ := top["source"].(string)
+				if src == "" {
+					src = "a page"
+				}
+				_, text, err := d.search.Fetch(ctx, u, 5000)
+				if err != nil || len(strings.TrimSpace(text)) < 200 { // a page drawn by script: a real browser reads it
+					if t, _, berr := d.browsePage(ctx, u); berr == nil {
+						text, err = t, nil
+					}
+				}
+				ok := err == nil && strings.TrimSpace(text) != ""
+				ans := ""
+				if ok {
+					ans = d.readSource(ctx, asked, src, u, text)
+				}
+				lb, _ := json.Marshal(map[string]any{"event": "read_top", "n": i, "ok": ok, "figure": hasDigit(ans)})
+				d.log.Println(string(lb))
+				if hasDigit(ans) {
+					say = joinText(warn, ans)
+					break
+				}
+				if i == len(order)-1 || i == 2 {
+					say = joinText(warn, "I couldn't find a live figure for that: the pages I checked didn't show one.")
+				}
+			}
+		}
 		var brain []string
 		for i, r := range rs {
 			if i == 3 {
@@ -640,3 +682,24 @@ func (d *Daemon) extraStateLocked() {
 	}
 	d.st.Search = d.searchInfo()
 }
+
+// timeSensitive: questions whose answer changes by the hour, never answered from the search cache.
+var timeSensitive = regexp.MustCompile(`(?i)\b(price|prices|cost|rate|today|tonight|now|current|currently|latest|news|weather|score|scores|stock|stocks|live|this week|exchange)\b`)
+
+// skipCJK drops cached results in Chinese, Japanese or Korean (the owner hears English).
+func skipCJK(rs []map[string]any) []map[string]any {
+	out := rs[:0:0]
+	for _, r := range rs {
+		t, _ := r["title"].(string)
+		x, _ := r["snippet"].(string)
+		if !search.MostlyCJK(t + " " + x) {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// hasFigure: a snippet that carries an amount (78,412, $3.20, 4.5%), not just "last 7 days".
+var figureRE = regexp.MustCompile(`\d[\d,.]{2,}|[$€£¥]\s?\d|\d\s?(%|usd|eur|dollars)`)
+
+func hasDigit(s string) bool { return figureRE.MatchString(strings.ToLower(s)) }
