@@ -37,6 +37,7 @@ const usage = `vc: the voice computer for Herdr (vcd and its two local LFM3 llam
   vc status                   the state as JSON (exit 1 when vcd isn't running)
   vc daemon                   run vcd in the foreground
   vc talk                     the mic button: press once to listen, again to send
+  vc dictate start|stop|cancel  written down for a text box (no turn): stop prints the text
   vc ptt start|stop           a held key going down / up
   vc turn --wav F | --text T | --say T
                               one turn from a WAV file, typed words, or words spoken by macOS 'say'
@@ -91,6 +92,22 @@ func main() {
 		call(daemon.Request{Cmd: "ptt", Arg: args[1], At: at.UnixMilli()})
 	case "talk":
 		call(daemon.Request{Cmd: "talk", At: at.UnixMilli()})
+	case "dictate":
+		if len(args) != 2 || (args[1] != "start" && args[1] != "stop" && args[1] != "cancel") {
+			fail("vc dictate start|stop|cancel")
+		}
+		var r struct {
+			OK    bool   `json:"ok"`
+			Error string `json:"error"`
+			Text  string `json:"text"`
+		}
+		json.Unmarshal(request(daemon.Request{Cmd: "dictate", Arg: args[1]}), &r)
+		if !r.OK {
+			fail(r.Error)
+		}
+		if args[1] == "stop" {
+			fmt.Println(r.Text)
+		}
 	case "cancel", "hide", "words", "undo":
 		call(daemon.Request{Cmd: args[0]})
 	case "confirm", "decline":

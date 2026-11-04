@@ -43,6 +43,7 @@ type Daemon struct {
 
 	// The key press being held: its recorder, when it went down and the turn's number.
 	rec       *audio.Recorder
+	dict      *audio.Recorder // a dictation take (dictate.go)
 	pressAt   time.Time
 	listening time.Duration // from `vc ptt start` to the Listening state going out
 	lastStop  time.Time     // the latest `vc ptt stop`

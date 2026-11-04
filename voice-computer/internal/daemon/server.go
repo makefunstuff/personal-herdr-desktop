@@ -107,6 +107,21 @@ func (d *Daemon) Dispatch(req Request) any {
 			return map[string]any{"ok": false, "error": "ptt takes start or stop"}
 		}
 		return map[string]any{"ok": true}
+	case "dictate": // written down for a text box: start, stop (returns the text) or cancel
+		switch req.Arg {
+		case "start":
+			return okErr(d.DictateStart())
+		case "stop":
+			text, err := d.DictateStop(context.Background())
+			if err != nil {
+				return map[string]any{"ok": false, "error": err.Error()}
+			}
+			return map[string]any{"ok": true, "text": text}
+		case "cancel":
+			d.DictateCancel()
+			return map[string]any{"ok": true}
+		}
+		return map[string]any{"ok": false, "error": "dictate takes start, stop or cancel"}
 	case "talk": // the mod's button and key: press once to listen, again to send
 		listening := d.Talk(at)
 		return map[string]any{"ok": true, "listening": listening}

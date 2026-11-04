@@ -1,0 +1,72 @@
+--- a/chat/dictate.js	2026-11-05 01:05:13
++++ b/chat/dictate.js	2026-11-05 01:05:14
+@@ -18,6 +18,18 @@
+   return found;
+ }
+ 
++// >>> personal-herdr-desktop: on macOS the voice computer's mic and LFM3-Audio write it down
++// (vc dictate start|stop|cancel; Herdr Voice holds the mic permission). Linux keeps whisper.cpp.
++const VC = () => `${home()}/.local/bin/vc`;
++let vcFound;
++function voiceComputer() {
++  vcFound ??= home().startsWith("/Users/")
++    ? exec(VC(), ["status"]).then((r) => r.code === 0).catch(() => false)
++    : Promise.resolve(false);
++  return vcFound;
++}
++// <<< personal-herdr-desktop
++
+ export class Dictation {
+   constructor(key) {
+     this.key = key.replace(/[^\w.-]/g, "_");
+@@ -34,6 +46,14 @@
+   async start() {
+     if (this.state !== "idle") return;
+     this.error = null;
++    if (await voiceComputer()) {
++      const r = await exec(VC(), ["dictate", "start"]).catch((e) => ({ code: 1, stderr: String(e?.message ?? e) }));
++      if (r.code !== 0) { this.error = `Dictation didn't start: ${(r.stderr || "the voice computer isn't running").trim()}`; return; }
++      this.state = "recording";
++      this.started = Date.now();
++      this.vc = true;
++      return;
++    }
+     const w = await whisper();
+     if (!w) { this.error = "Dictation needs whisper.cpp on this computer. Install it, then try again."; return; }
+     this.state = "recording";
+@@ -46,6 +66,7 @@
+ 
+   // How loud the microphone is now, 0..1 (record.ts writes it ten times a second).
+   async level() {
++    if (this.vc) return 0.35; // the voice computer keeps its level to itself: a steady "listening"
+     const v = Number((await readTextFile(this.levelFile).catch(() => null)) ?? 0);
+     return Number.isFinite(v) ? v : 0;
+   }
+@@ -54,6 +75,19 @@
+   async stop() {
+     if (this.state !== "recording") return "";
+     this.state = "writing";
++    if (this.vc) {
++      this.vc = false;
++      try {
++        const r = await exec(VC(), ["dictate", "stop"]);
++        if (r.code !== 0) throw new Error(r.stderr);
++        return clean(r.stdout);
++      } catch (e) {
++        this.error = `Couldn't write that down: ${String(e?.message ?? e).trim() || "try again"}`;
++        return "";
++      } finally {
++        this.state = "idle";
++      }
++    }
+     try {
+       await exec("sh", ["-c", 'p=$(cat "$1.pid" 2>/dev/null) && kill -INT "$p" 2>/dev/null; rm -f "$1.pid"; true', "x", this.file]);
+       await this.run;
+@@ -72,6 +106,7 @@
+ 
+   // Throws the recording away (Cancel, a call starting, or the chat closing).
+   cancel() {
++    if (this.state === "recording" && this.vc) { this.vc = false; exec(VC(), ["dictate", "cancel"]).catch(() => {}); this.state = "idle"; return; }
+     if (this.state === "recording") exec("sh", ["-c", 'p=$(cat "$1.pid" 2>/dev/null) && kill -TERM "$p" 2>/dev/null; rm -f "$1.pid" "$1" "$2"; true', "x", this.file, this.levelFile]);
+     this.state = "idle";
+   }
