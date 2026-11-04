@@ -899,6 +899,8 @@ func (d *Daemon) fastResolves(ctx context.Context, f intent.Fast) bool {
 	}
 	c := f.Call
 	switch c.Name {
+	case "computer_task": // only for an app this Mac has; else the brain hears it
+		return c.Str("app") == "" || installedApp(c.Str("app")) != ""
 	case "focus", "go_to_space", "send_to_agent", "agent_doing", "read_latest", "web_search", "browse":
 	default:
 		return true

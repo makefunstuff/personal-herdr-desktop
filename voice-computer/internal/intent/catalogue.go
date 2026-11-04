@@ -81,6 +81,9 @@ func Catalogue() []Tool {
 		tool("open_app", "Open (launch) a Mac app by name.", map[string]any{
 			"app": str("The app's name, like \"Firefox\"."),
 		}, "app"),
+		tool("computer_task", "Do something in a Mac app or on a website that takes clicking or typing (\"open the calculator and work out 37 times 41\", \"in Telegram, mute the work chat\", \"fill in the form on example.com\"). A capable agent does it and reports back; always confirmed first.", map[string]any{
+			"task": str("The owner's request, in their own words."),
+		}, "task"),
 		tool("read_page", "Read more of the page the last web search found, when the owner asks for more about it.", map[string]any{}),
 		tool("pomodoro", "Pomodoro timer: start a focus session, take a break, pause, resume, stop, add minutes, say the time left, or the stats.", map[string]any{
 			"action":  enum("What to do.", "start", "break", "pause", "resume", "stop", "add", "status", "stats"),
@@ -119,7 +122,7 @@ const ToolInstructions = `Your tools act on Herdr, the app where the owner's ter
 	`gets no tool: just answer it. Never call a tool because of the context line. ` +
 	`Pass names as the owner said them; never make up a name, a path or a command. Up to three tools for one ` +
 	`request. A tool result is said to the owner as it is: after a tool, say nothing more. ` +
-	`A Mac app the owner wants to look at goes to read_app, one to open goes to open_app (never for a Herdr space or agent). ` +
+	`Anything to do in an app or on a website beyond reading or opening it goes to computer_task with the owner's words. A Mac app the owner wants to look at goes to read_app, one to open goes to open_app (never for a Herdr space or agent). ` +
 	`A website the owner names (\"what's on hacker news\", \"check the go blog\") goes to browse, with their question. ` +
 	`A question of fact about the world (a person, a place, a thing, an event, a definition) goes to web_search. A sum, ` +
 	`a conversion or a guess about the future gets no tool: say in one sentence that you'd only be guessing. A question the context line answers (the time, the layout, how many agents work or wait) gets ` +

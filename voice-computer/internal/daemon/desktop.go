@@ -54,7 +54,16 @@ func desktopBin() (string, error) {
 	return "", errors.New("agent-desktop isn't installed (npm install -g agent-desktop)")
 }
 
+// runDesktop runs an agent-desktop command; a timed-out one (the app was busy) is tried once more.
 func runDesktop(ctx context.Context, args ...string) (json.RawMessage, error) {
+	data, err := runDesktopOnce(ctx, args...)
+	if err != nil && strings.HasPrefix(err.Error(), "TIMEOUT") {
+		data, err = runDesktopOnce(ctx, args...)
+	}
+	return data, err
+}
+
+func runDesktopOnce(ctx context.Context, args ...string) (json.RawMessage, error) {
 	bin, err := desktopBin()
 	if err != nil {
 		return nil, err
@@ -75,8 +84,11 @@ func runDesktop(ctx context.Context, args ...string) (json.RawMessage, error) {
 	}
 	if !r.OK {
 		if r.Error != nil {
-			if r.Error.Code == "PERMISSION_DENIED" || strings.Contains(strings.ToLower(r.Error.Message), "accessibility") {
+			if r.Error.Code == "PERM_DENIED" || r.Error.Code == "PERMISSION_DENIED" {
 				return nil, errors.New("Herdr Voice needs Accessibility in System Settings, Privacy and Security (" + r.Error.Code + ": " + oneLine(r.Error.Message, 160) + ")")
+			}
+			if r.Error.Code == "TIMEOUT" {
+				return nil, errors.New("TIMEOUT: " + r.Error.Message)
 			}
 			return nil, errors.New(r.Error.Message)
 		}

@@ -109,6 +109,12 @@ func Match(text string, cardOpen bool) (Fast, bool) {
 	t := norm(text)
 	t = layoutWords.Replace(t)
 	t = shepherdrWords(t)
+	// Something to do in a named app ("open the calculator and work out 37 times 41", "mute the work chat in
+	// the telegram app"): the whole request goes to computer_task (vcd checks the app is installed), before
+	// the rule that keeps sums from the brain.
+	if m := appTaskRE.FindStringSubmatch(t); m != nil && !cardOpen && !justLookRE.MatchString(t) {
+		return toolCall("computer_task", "task", text, "app", m[1]+m[2]), true
+	}
 	switch {
 	case t == "":
 		return Fast{}, false
@@ -616,3 +622,9 @@ var (
 	appOpenRE = regexp.MustCompile(`^(?:open|launch|start|fire up)(?: the)? (.+?) app$|^(?:launch|fire up) (?:the )?(.+)$`)
 	appReadRE = regexp.MustCompile(`^(?:whats|what is|read me|read|check)(?: new)? (?:in|on) my (.+?) app$|^(?:whats|what is) (?:in|on) my (.+?)(?: window)?$`)
 )
+
+// appTaskRE: a request that names an app and something to do in it.
+var appTaskRE = regexp.MustCompile(`^open (?:the |my )?([a-z0-9 ]+?)(?: app)? and \S.*$|^\S.* (?:in|on|using|with) (?:the |my |that )?([a-z0-9 ]+?) app$`)
+
+// justLookRE: a question about what an app shows (read_app), not something to do in it.
+var justLookRE = regexp.MustCompile(`^(?:whats|what is|what are|whats new|read|read me|check|show me|tell me|is there|are there|any)\b`)

@@ -53,6 +53,8 @@ func (d *Daemon) plan(ctx context.Context, c intent.Call, w herdr.World, werr er
 		a = d.planReadApp(c)
 	case "open_app":
 		a = d.planOpenApp(c)
+	case "computer_task":
+		a = d.planComputerTask(c)
 	case "pomodoro":
 		a = d.planPomodoro(c)
 	case "last_note":
