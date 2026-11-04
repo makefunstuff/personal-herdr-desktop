@@ -1,3 +1,5 @@
 .DS_Store
 *.bak.*
 icon-theme.cache
+gpui-kit.d.ts
+jsconfig.json

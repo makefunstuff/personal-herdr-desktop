@@ -389,9 +389,9 @@ export default class Shepherdr extends View {
     const out = [];
     const needs = SOURCES.reduce((n, src) => n + this.waiting(this.state[src.id].snap).length, 0);
     out.push(h_flex().w_full().h(36).flex_none().px(10).gap(8).items_center().bg(t.chrome).border_b(1).border_color(t.border)
-      .child(div().text_color(t.accent).child(crook(14))).child(div().flex_1().text_size(12.5).font_semibold().child("Shepherdr"))
+      .child(div().text_color(t.accent).child(crook(14))).child(div().flex_1().text_size(12.5).font_semibold().child(shared("layout") === "workbench" ? "SHEPHERDR" : "Shepherdr"))
       .child(h_flex().id("open-monitor").h(20).px(6).items_center().border_1().border_color(t.border).text_size(10.5).cursor_pointer()
-        .hover((e) => e.bg(t.hover)).on_click(() => openShepherdr("monitor")).child("Monitor"))
+        .hover((e) => e.bg(t.hover)).on_click(() => openShepherdr("monitor")).child(shared("layout") === "workbench" ? "MONITOR" : "Monitor"))
       .when(needs > 0, (e) => e.child(div().px(6).bg(t.blocked).text_color(t.background).text_size(10.5).font_semibold().child(`${needs} need you`))));
     for (const src of SOURCES) this.sourceRows(t, src, out);
     const compact = Boolean(props()?.compact);
