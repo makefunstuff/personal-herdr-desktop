@@ -33,6 +33,19 @@ for m in "$SRC"/mods/*; do
   rm -rf "$DST/mods/$name"; cp -R "$m" "$DST/mods/$name"
 done
 
+if [ -d "$DST/mods/chat" ] && command -v patch >/dev/null; then
+  echo "== Shepherdr 3.0: square corners and theme colours in these layouts, chat fixes (zoom, reasoning shown)"
+  P="$SRC/shepherdr-patches"
+  for u in "$DST"/mods/*/ui.js; do
+    patch -s -R --dry-run "$u" < "$P/ui.js.patch" >/dev/null 2>&1 && continue   # already in
+    patch -s --dry-run "$u" < "$P/ui.js.patch" >/dev/null 2>&1 && { backup "$u"; patch -s "$u" < "$P/ui.js.patch"; } || echo "  $u: not Shepherdr 3.0.0's, left as is"
+  done
+  if ! (cd "$DST/mods" && patch -s -R -p1 --dry-run < "$P/chat.patch" >/dev/null 2>&1); then
+    (cd "$DST/mods" && patch -s -p1 --dry-run < "$P/chat.patch" >/dev/null 2>&1) && { backup "$DST/mods/chat"; (cd "$DST/mods" && patch -s -p1 < "$P/chat.patch"); } \
+      || echo "  mods/chat: not Shepherdr 3.0.0's, chat patch left out"
+  fi
+fi
+
 echo "== Herdr: layouts keep only the panels whose mods are installed (Shepherdr 3.0's tasks, chat, artifacts...)"
 python3 - "$DST" <<'PY'
 import json, os, sys

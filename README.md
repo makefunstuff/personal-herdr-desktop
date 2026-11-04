@@ -52,6 +52,12 @@ tables, todos. `herdr-doc new|check|export|list`; a Claude Code skill tells agen
 (app, title, Herdr space and tab) every 30 s: active and idle time, by category, by Herdr space, by issue key, the day as
 10-minute slots, the last 7 days. Opt-in: `./install.sh --timetrack`.
 
+**Shepherdr 3.0 patches** (`herdr-app/shepherdr-patches`, applied by the installer when Shepherdr 3.0.0's mods are
+there): its views follow the px layouts' look (square corners, the theme's status colours, capitals on workbench), and
+its chat works with Herdr zoomed (measured sizes converted to the units widths are given in, so the column is centred
+and the newest messages stay in view), shows the agent's reasoning as folded "Thinking" lines, and recovers from a blank
+list without re-laying out every message.
+
 **Sidebar**: AI usage limits (`mods/px-usage`, needs `herdr-usage`) and CPU / GPU / RAM / disk (`mods/px-sysmon`).
 
 **Linux extras** (`linux/`): Herdr typing sounds (real Cherry MX Blue recordings from Mechvibes, softened; IBM Model M

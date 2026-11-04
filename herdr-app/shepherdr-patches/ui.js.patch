@@ -1,0 +1,79 @@
+--- a/ui.js
++++ b/ui.js
+@@ -13,19 +13,52 @@
+ export const H = { xs: 20, sm: 24, lg: 32 };
+ // Text: 11 IDs and times, 12 second lines and labels, 13 body and titles, 15 page titles.
+ export const TEXT = { id: 11, label: 12, body: 13, title: 15 };
+-// Corners: 6 on controls, 8 on cards (and hovers), 12 on bubbles.
+-export const RADIUS = { control: 6, card: 8, bubble: 12 };
++// Personal (this machine): in the hand-themed pixel layouts Shepherdr follows their look: square corners
++// everywhere and the theme's own status colours. Herdr's and Shepherdr's own layouts keep Shepherdr's look.
++const THEMED = new Set(["workbench", "fortress", "dos", "pixel"]);
++export const themed = () => THEMED.has(shared("layout"));
++// workbench writes its labels in capitals, like its own panels (SPACES, AGENTS, BUS 1 ...)
++const caps = (x) => (typeof x === "string" && shared("layout") === "workbench" ? x.toUpperCase() : x);
++{
++  // Square corners in the themed layouts. Installed once on the shared element prototype; every load of this
++  // module (each mod's copy, each reload) hands it the newest check, and a failing check never breaks a render.
++  const proto = Object.getPrototypeOf(div());
++  proto.__themedCheck = themed;
++  if (!proto.__themedRounded) {
++    const rounded = proto.rounded;
++    proto.__themedRounded = rounded;
++    proto.rounded = function (r) {
++      let square = false;
++      try { square = Boolean(proto.__themedCheck?.()); } catch { square = false; }
++      return rounded.call(this, square ? 0 : r);
++    };
++  }
++}
++// Personal (this machine): a measured size (on_size_change, a press's local position) in the units
++// widths and heights are given in. Herdr zoomed draws w(100) 160 px wide but measures it 160, so a
++// measurement fed back as a width or height would grow by that much each time. The chat's probe sets k.
++export const UNIT = (globalThis.__herdrUnit ??= { k: 1 });
++export function un(v) {
++  const k = UNIT.k || 1;
++  if (v == null) return v;
++  if (typeof v === "number") return v / k;
++  return { ...v, width: v.width / k, height: v.height / k };
++}
++// Corners: 6 on controls, 8 on cards (and hovers), 12 on bubbles (0 in the themed layouts).
++export const RADIUS = { get control() { return themed() ? 0 : 6; }, get card() { return themed() ? 0 : 8; }, get bubble() { return themed() ? 0 : 12; } };
+ 
+ // Status colors -----------------------------------------------------------
+ // Shepherdr's own, light and dark, the same as the task dots (dot.js uses these): red needs
+ // you (and alerts), green ready, amber working.
+ const dark = () => settings()?.dark !== false;
+-export const red = () => (dark() ? "#ff6369" : "#e5484d");
+-export const green = () => (dark() ? "#3dd68c" : "#30a46c");
+-export const amber = () => (dark() ? "#f5b544" : "#e2a336");
++// Theme colours as plain #rrggbb: callers append their own alpha (red() + "26").
++const rgb6 = (c, fallback) => (typeof c === "string" && /^#[0-9a-fA-F]{6}/.test(c) ? c.slice(0, 7) : fallback);
++export const red = () => (themed() ? rgb6(theme().blocked, "#ff6369") : dark() ? "#ff6369" : "#e5484d");
++export const green = () => (themed() ? rgb6(theme().done, "#3dd68c") : dark() ? "#3dd68c" : "#30a46c");
++export const amber = () => (themed() ? rgb6(theme().working, "#f5b544") : dark() ? "#f5b544" : "#e2a336");
+ // Text on a red, green or amber fill: white on light's deep fills, black on dark's bright ones
+ // (Shepherdr's AttentionBadge).
+-export const onStatus = () => (dark() ? "#000000" : "#ffffff");
++export const onStatus = () => (themed() ? rgb6(theme().background, "#000000") : dark() ? "#000000" : "#ffffff");
+ 
+ // Hover and pointer --------------------------------------------------------
+ // Only what a click does something on gets the pointer and a hover; everything else gets
+@@ -133,7 +166,7 @@
+ export function heading(text, right = null) {
+   const t = theme();
+   return h_flex().h(28).flex_none().gap(8).items_center().justify_between().text_size(TEXT.label).font_medium().text_color(t.dim)
+-    .child(div().min_w(0).truncate().child(text))
++    .child(div().min_w(0).truncate().child(caps(text)))
+     .when(Boolean(right), (el) => el.child(div().flex_none().child(right)));
+ }
+ 
+@@ -142,7 +175,7 @@
+ export function cardHeader(title, actions = []) {
+   const t = theme();
+   return h_flex().w_full().flex_none().gap(12).items_center()
+-    .child(div().flex_1().min_w(0).truncate().text_size(TEXT.body).font_medium().text_color(t.foreground).child(title))
++    .child(div().flex_1().min_w(0).truncate().text_size(TEXT.body).font_medium().text_color(t.foreground).child(caps(title)))
+     .when(actions.length > 0, (el) => el.child(h_flex().flex_none().gap(12).items_center().children(actions)));
+ }
+ 
