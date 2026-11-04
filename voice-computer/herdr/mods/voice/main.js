@@ -1,13 +1,13 @@
 // Voice: the secretary of herdr-voice-computer (vcd) in Herdr. One copy floats in the layout (a
 // compact pill that shows only while it listens, thinks, speaks or asks), keeps vcd's state for the
 // px-tabs mic button (shared "voice": the state word and counts, never words), posts vcd's toasts and
-// takes the keys (voice.talk, voice.confirm, voice.decline, voice.quiet, voice.overlay). Opened as a
+// takes the keys (voice.talk, voice.confirm, voice.decline, voice.quiet, voice.overlay, voice.dictate: Option+L). Opened as a
 // window (props().overlay), it shows the conversation, the inbox and the quiet switch.
 // When vcd isn't running as this copy loads, it runs `vc start` once (vcd then runs as Herdr Voice.app,
 // which macOS asks for the microphone). vcd listens on 127.0.0.1:8792 and wants the token in ~/.local/state/herdr-voice-computer/token.
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { exec, home, readTextFile, theme, shared, setShared, props, openOverlay, closeOverlay, notify, nextCommand } from "herdr";
+import { exec, home, readTextFile, theme, shared, setShared, props, openOverlay, closeOverlay, notify, nextCommand, focused, panes, run } from "herdr";
 
 const GS = () => ({ workbench: "gw", fortress: "gf" })[shared("layout")] ?? "g";
 const URL = "http://127.0.0.1:8792";
@@ -60,7 +60,8 @@ export default class Voice extends View {
       cx.spawn(async (cx) => {
         for (;;) {
           const c = await nextCommand();
-          if (c === "overlay") this.toggleWindow();
+          if (c === "dictate") await this.dictate();
+          else if (c === "overlay") this.toggleWindow();
           else if (c === "quiet") await cmd("quiet", "toggle");
           else if (c === "talk" && !this.st) { this.started = true; await exec(VC(), ["start"]).catch(() => null); }
           else if (["talk", "confirm", "decline", "cancel"].includes(c)) await cmd(c);
@@ -68,6 +69,35 @@ export default class Voice extends View {
         }
       });
     }
+  }
+
+  // Dictation, one key (voice.dictate, Option+L) for any agent: press, speak, press again. In a chat the chat's own
+  // dictation runs (shared "chat.dictatereq": the text lands in its box, with its wave). In a terminal
+  // (an agent's TUI, a shell) vcd writes it down (LFM3-Audio, this Mac) and it's pasted at the cursor,
+  // not sent; the clipboard is put back after.
+  async dictate() {
+    const f = focused();
+    if (this.dictating) {
+      const at = this.dictating;
+      this.dictating = null;
+      const r = await exec(VC(), ["dictate", "stop"]).catch((e) => ({ code: 1, stderr: String(e?.message ?? e) }));
+      const text = (r.stdout ?? "").trim();
+      if (r.code !== 0) { notify({ title: "Dictation", body: oneLine(r.stderr || "Couldn't write that down.", 200), level: "warning", timeout: 6000 }); return; }
+      if (!text) { notify({ title: "Dictation", body: "Didn't catch anything.", timeout: 3000 }); return; }
+      const old = await exec("pbpaste", []).then((x) => x.stdout).catch(() => null);
+      await exec("sh", ["-c", 'printf %s "$1" | pbcopy', "x", text]);
+      run("pane.focus", { pane: at.pane });
+      run("terminal.paste");
+      if (old != null) setTimeout(() => exec("sh", ["-c", 'printf %s "$1" | pbcopy', "x", old]).catch(() => {}), 800);
+      return;
+    }
+    const p = f?.pane ? panes().find((x) => x.pane === f.pane) : null;
+    if (p?.mod === "chat") { setShared("chat.dictatereq", { pane: f.pane, at: Date.now() }); return; }
+    if (!f?.terminal) { notify({ title: "Dictation", body: "Focus an agent's chat or terminal, then press it again.", timeout: 4000 }); return; }
+    const r = await exec(VC(), ["dictate", "start"]).catch((e) => ({ code: 1, stderr: String(e?.message ?? e) }));
+    if (r.code !== 0) { notify({ title: "Dictation", body: oneLine(r.stderr || "The voice computer isn't running.", 200), level: "warning", timeout: 6000 }); return; }
+    this.dictating = { pane: f.pane, terminal: f.terminal };
+    notify({ title: "Dictating", body: "Speak, then press the dictation key again to paste it here.", timeout: 4000 });
   }
 
   // What the px-tabs mic shows: the state word and counts only (shared state is saved to disk).
