@@ -54,11 +54,15 @@ export default class Usage extends View {
     cx.notify();
     cx.spawn(async (cx) => {
       let r;
-      try {
-        r = await exec(`${home()}/.local/share/herdr-usage/herdr-usage`, fresh ? ["limits", "--fresh"] : ["limits"]);
-      } catch {
-        // Not installed (or no python3): say where it comes from.
-        this.error = `Needs herdr-usage in ~/.local/share/herdr-usage/ (${INSTALL})`;
+      const bin = `${home()}/.local/share/herdr-usage/herdr-usage`, args = fresh ? ["limits", "--fresh"] : ["limits"];
+      let failure = null;
+      // One retry: a busy machine can hit exec's 30 s limit once without anything being wrong.
+      for (let i = 0; i < 2 && !r; i++) { try { r = await exec(bin, args); } catch (e) { failure = e; } }
+      if (!r) {
+        const why = String(failure?.message ?? failure ?? "");
+        // Only a missing program says where it comes from; anything else shows as it is.
+        this.error = /no such file|not found|ENOENT/i.test(why) ? `Needs herdr-usage in ~/.local/share/herdr-usage/ (${INSTALL})`
+          : `herdr-usage didn't answer (${why.split("\n")[0] || "timed out"}); click the header to retry`;
         this.loading = false;
         cx.notify();
         return;

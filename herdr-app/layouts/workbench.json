@@ -266,7 +266,7 @@
                             "width": 1,
                             "color": "border"
                           },
-                          "radius": 10,
+                          "radius": 0,
                           "resizable": false
                         }
                       ],
@@ -313,7 +313,7 @@
                             "width": 1,
                             "color": "border"
                           },
-                          "radius": 10,
+                          "radius": 0,
                           "resizable": false
                         }
                       ],

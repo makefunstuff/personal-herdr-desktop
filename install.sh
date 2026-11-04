@@ -73,7 +73,7 @@ if [ -d "$DST/mods/chat" ] && command -v patch >/dev/null; then
   done
   # The themed layouts' look (workbench, fortress, pixel) in Shepherdr's own mods: their glyphs, workbench's capitals,
   # the status bar's bordered buttons. Each <mod>.patch changes only that mod's own files (never a shared copy).
-  for pp in chat.patch,chat chat-3.1.patch,chat tabs-tasks.patch,tabs-tasks \
+  for pp in chat.patch,chat chat-3.1.patch,chat chat-thread-look.patch,chat tabs-tasks.patch,tabs-tasks \
     tabs-tasks-look.patch,tabs-tasks tabs-tasks-workers.patch,tabs-tasks accept-card.patch,accept-card artifacts.patch,artifacts \
     chat-call.patch,chat-call chat-image.patch,chat-image chat-models.patch,chat-models chat-react.patch,chat-react \
     confirm-chat.patch,confirm-chat coordinator.patch,coordinator jump.patch,jump keybinds.patch,keybinds \

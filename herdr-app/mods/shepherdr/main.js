@@ -3,7 +3,9 @@
 import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
 import * as fs from "fs/promises";
-import { run, theme, agents, exec, props, shared, appHome, panes, spaces, home } from "herdr";
+import { run, theme, agents, exec, props, shared, setShared, appHome, panes, spaces, home } from "herdr";
+// The desktop's opener: open on macOS, xdg-open on Linux.
+const OPENER = () => (home().startsWith("/Users/") ? "open" : "xdg-open");
 // Show Shepherdr's tab if it's open anywhere, else open it here (same as the status bar's buttons).
 function openShepherdr(view) {
   const name = view === "monitor" ? "Monitor" : "Shepherdr";
@@ -199,10 +201,16 @@ export default class Shepherdr extends View {
   }
 
   open(src, key, cx) {
-    // 3.0 tasks: a task with a live agent opens that agent's terminal (its space and tab), like Herdr's agent list.
+    // Shepherdr 3.x tasks open in this layout's own Tasks panel, never in a stand-in chat here or in Shepherdr's
+    // layout: a task with an agent in its task view (as Shepherdr's own peekTerminal(), lib/inbox.js), else the list.
     const k = (this.state[src]?.snap?.tasks ?? []).find((x) => x.agent?.chat === key);
-    if (k?.agent?.address) { const a = (agents() ?? []).find((x) => x.address === k.agent.address);
-      if (a) { run("space.select", { id: a.space }); run("tab.select", { id: a.tab }); run("agent.focus", { terminal: a.address }); } }
+    if (this.src(src)?.tasks3 && k) {
+      if (k.agent?.address) setShared("tasks.thread", { terminal: k.agent.address, task: k.id, title: k.name, at: Date.now() });
+      run("layout.select", { stack: "panel-body", child: "tasks" });
+      run("layout.select", { stack: "tasks", child: k.agent?.address ? "tasks-thread" : "tasks-list" });
+      run("layout.show", { id: "panel" });
+      return true;
+    }
     this.sel = { src, key }; this.chat = null; this.note = null; this.view = null;
     cx.spawn(async (cx) => {
       await this.loadChat();
@@ -456,7 +464,7 @@ export default class Shepherdr extends View {
   async openInBrowser(src, id, v) {
     const s = this.src(src);
     try {
-      if (!s.via) { await exec("xdg-open", [`http://127.0.0.1:7787/api/artifacts/${encodeURIComponent(id)}?full=1${v ? `&v=${v}` : ""}`]); return; }
+      if (!s.via) { await exec(OPENER(), [`http://127.0.0.1:7787/api/artifacts/${encodeURIComponent(id)}?full=1${v ? `&v=${v}` : ""}`]); return; }
       // the other machine's Shepherdr only listens there: fetch the page and its data, keep a local copy, open that
       const a = await get(s, `artifacts/${encodeURIComponent(id)}/raw${v ? `?v=${v}` : ""}`);
       const html = String(a?.html ?? "");
@@ -464,7 +472,7 @@ export default class Shepherdr extends View {
       const dir = `${appHome()}/data/shepherdr-artifacts`; await fs.mkdir(dir, { recursive: true });
       const file = `${dir}/${src}-${id}-v${a?.v ?? v ?? 0}.html`;
       await fs.writeFile(file, html.includes("<head>") ? html.replace("<head>", "<head>" + boot) : boot + html);
-      await exec("xdg-open", [file]);
+      await exec(OPENER(), [file]);
     } catch (e) { this.note = `Can't open it: ${e.message}`; }
   }
   artifactCard(t, post, full) {
@@ -545,7 +553,7 @@ export default class Shepherdr extends View {
       }
       case "callout": return div().w_full().px(8).py(6).bg(t.background).border_l(3).border_color(tone(b.tone ?? "info")).text_size(12.5).child(S(b.text));
       case "links": return v_flex().gap(2).children((b.items ?? []).map((i, n) => div().id(`lnk-${n}-${S(i.url).slice(0, 40)}`).text_size(12).text_color(t.accent)
-        .cursor_pointer().on_click(() => exec("xdg-open", [S(i.url)]).catch(() => {})).child(S(i.label || i.url))));
+        .cursor_pointer().on_click(() => exec(OPENER(), [S(i.url)]).catch(() => {})).child(S(i.label || i.url))));
       default: return null;
     }
   }
@@ -723,7 +731,7 @@ export default class Shepherdr extends View {
     return v_flex().id(`node-${src.id}-${k.id}`).relative().w(320).flex_none().border_1().border_color(t.border).bg(t.chrome)
       .cursor_pointer().hover((e) => e.bg(t.surface))
       .child(corner("tl")).child(corner("tr")).child(corner("bl")).child(corner("br"))
-      .on_click((_e, cx) => { if (taskChat(k)) { this.open(src.id, taskChat(k), cx); if (props()?.view === "monitor") this.monitorChat = true; } })
+      .on_click((_e, cx) => { if (taskChat(k)) { if (!this.open(src.id, taskChat(k), cx) && props()?.view === "monitor") this.monitorChat = true; } })
       .child(h_flex().h(24).px(8).gap(8).items_center().border_b(1).border_color(t.border)
         .child(div().text_size(11).font_semibold().text_color(t.foreground).child(k.id))
         .child(div().flex_1().truncate().text_size(10).text_color(t.dim).child(String(this.placeName(src, k.place)).toUpperCase()))
@@ -854,7 +862,7 @@ export default class Shepherdr extends View {
         .children(waits.slice(0, 12).map((n, i) => {
           const place = (s.places ?? []).find((p) => p.id === n.place);
           return h_flex().id(`mw-${src.id}-${i}`).gap(10).text_size(11).cursor_pointer().hover((e) => e.bg(t.hover))
-            .on_click((_e, cx) => { this.open(src.id, n.chat, cx); this.monitorChat = true; })
+            .on_click((_e, cx) => { if (!this.open(src.id, n.chat, cx)) this.monitorChat = true; })
             .child(div().size(6).bg(t.blocked)).child(div().w(70).text_color(t.muted).child(n.task ?? "coordinator"))
             .child(div().flex_1().min_w(0).truncate().child(n.question?.title ?? n.text ?? "waiting on you"))
             .child(div().text_color(t.dim).child(String(place?.name ?? "").toUpperCase()));
