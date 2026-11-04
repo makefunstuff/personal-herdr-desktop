@@ -1,0 +1,71 @@
+--- a/tabs-tasks/main.js
++++ b/tabs-tasks/main.js
+@@ -1,6 +1,8 @@
+ import { View, div, svg, image } from "gpui-kit";
+ import { h_flex } from "gpui-base";
+-import { panes, run, openOverlay, theme, window, shared, setShared, layout, settings, nextCommand, readTextFile, appHome, home } from "herdr";
++import { panes, run, openOverlay, theme, window, shared, setShared, layout, settings, nextCommand, readTextFile, appHome, home, focused, exec } from "herdr";
++// Personal (personal-herdr-desktop): the px layouts' glyph set, for the panels this bar also offers there.
++const GS = () => ({ workbench: "gw", fortress: "gf" })[shared("layout")] ?? "g";
+ import { spacesWithChats as spaces, sweep } from "./parked.js";
+ import { agentIn, isCoordinatorTab, closeTab, watchNewSpaces, newSpace, openCoordinator, renameTab, renameSpace } from "./coordinator.js";
+ import { startTick, tickOnChange } from "./tick.js";
+@@ -30,6 +32,9 @@
+     cx.timer.every(5000, () => sweep());
+     this.pressed = null;
+     this.panels = JSON.parse(localStorage.getItem("panels") ?? "{}");
++    // Personal: Pair's panel is installed (mods/pair, by `pair setup`): its button shows.
++    this.pairMod = false;
++    readTextFile(`${appHome()}/mods/pair/main.js`).then((x) => { this.pairMod = Boolean(x); }).catch(() => {});
+     // Shepherdr's service, which does the background work while it runs (lib/service.js).
+     watchService(cx);
+     // The person's pins, sidebar sections, icons and Notify, in step with the web app (lib/bridge.js).
+@@ -82,6 +87,8 @@
+           const s = spaces().find(s => (id ? s.id === id : s.active));
+           if (s) openCoordinator(s, true);
+         }
++        // Personal: cmd-alt-k (keys.json) mutes and unmutes the typing sounds (personal-herdr-desktop's herdr-keyclick).
++        if (c === "typing-toggle") exec(`${home()}/.local/bin/herdr-typing-toggle`, []).catch(() => {});
+         // A toast's "needs you": the Tasks panel, on its Active tab.
+         if (c === "inbox") showInbox();
+         // An agent's alert (herdr-task alert), clicked: "alert-<terminal>" ("~" for "/"), to that agent (inbox.js).
+@@ -175,7 +182,9 @@
+     const panel = find(root, "panel"), body = find(root, "panel-body");
+     // Tasks and Artifacts are offered (Artifacts unless its add-on is off), beside whichever of
+     // Files and Changes are on.
+-    const enabled = [...(shared("workspace.panels") ?? ["files", "changes"]), "tasks", ...(addonOn("artifacts") ? ["artifacts"] : [])];
++    // Personal: personal-herdr-desktop's panels (PR, Reviews, Docs, Time), wherever this layout has them.
++    const extra = ["pr", "reviews", "docs", "time"].filter((id) => find(root, id));
++    const enabled = [...(shared("workspace.panels") ?? ["files", "changes"]), "tasks", ...(addonOn("artifacts") ? ["artifacts"] : []), ...extra];
+     this.syncPanel(space, panel, body, enabled);
+     // The side panels' buttons, one style for all: icon first; the label when the bar has room
+     // (the open one keeps its label); a count after the icon (Tasks': what needs the person, red,
+@@ -202,10 +211,28 @@
+       .on_scroll_wheel(e => { if (Math.abs(e.delta.y) >= 1) run(e.delta.y > 0 ? "tab.prev" : "tab.next"); })
+       .child(h_flex().id("tab-scroll").flex_1().min_w(0).h_full().items_center().gap(3).overflow_x_scrollbar().children(tabsShown ? shown.map(item) : []))
+       .child(button("tab-new", "+", () => openOverlay({ mod: "new-menu-tasks", kind: "popup", width: 250, height: 543, props: { right: this.right } })))
++      // Personal: Pair's panel beside the focused terminal (its Alt-p); a second click closes it.
++      .when(this.pairMod, el => { const tab = focused()?.tab, open = panes().find(p => p.mod === "pair" && p.tab === tab);
++        return el.child(h_flex().id("panel-pair").h(H.sm).px(8).gap(5).flex_none().items_center().rounded(RADIUS.control)
++          .text_size(TEXT.label).bg(open ? t.selected : t.chrome).text_color(open ? t.foreground : t.muted).cursor_pointer()
++          .hover(s => s.bg(t.hover).text_color(t.foreground)).on_mouse_down("left", stop)
++          .on_click(() => open ? run("pane.close", { pane: open.pane }) : run("pane.split", { direction: "right", mod: "pair" }))
++          .child(svg("mods/pair/pair.svg").size(14)).child("Pair")); })
+       .when(enabled.includes("files"), el => el.child(panelButton("files", "Files", "mods/files/file.svg")))
+       .when(enabled.includes("changes"), el => el.child(panelButton("changes", "Changes", "mods/changes/changes.svg")))
+       .child(panelButton("tasks", "Tasks", "mods/tasks/tasks.svg", [counts ? inboxCount() : 0, greens ? readyCount() : 0]))
+       .when(enabled.includes("artifacts"), el => el.child(panelButton("artifacts", "Artifacts", "mods/artifacts/artifacts.svg")))
++      // Personal: personal-herdr-desktop's panels, and Desk (pomodoro and notes) where no px-status bar offers it.
++      .when(enabled.includes("pr"), el => el.child(panelButton("pr", "PR", "mods/task-pr/git-pull-request.svg")))
++      .when(enabled.includes("reviews"), el => el.child(panelButton("reviews", (shared("reviews.summary")?.requested ?? 0) > 0 ? `Reviews ${shared("reviews.summary").requested}` : "Reviews", `mods/px-chrome/${GS()}/check.svg`)))
++      .when(enabled.includes("docs"), el => el.child(panelButton("docs", "Docs", `mods/px-chrome/${GS()}/file-text.svg`)))
++      .when(enabled.includes("time"), el => el.child(panelButton("time", "Time", `mods/px-chrome/${GS()}/clock.svg`)))
++      .when(Boolean(find(root, "desk")) && find(root, "status")?.content?.mod !== "px-status", el => { const open = !find(root, "desk").hidden;
++        return el.child(h_flex().id("panel-desk").h(H.sm).px(8).gap(5).flex_none().items_center().rounded(RADIUS.control)
++          .text_size(TEXT.label).bg(open ? t.selected : t.chrome).text_color(open ? t.foreground : t.muted).cursor_pointer()
++          .hover(s => s.bg(t.hover).text_color(t.foreground)).on_mouse_down("left", stop)
++          .on_click(() => run("layout.toggle", { id: "desk" }))
++          .child(svg(`mods/px-chrome/${GS()}/file-text.svg`).size(14)).child("Desk")); })
+       .when(w?.buttons, el => el.child(button("minimize", w.platform === "windows" ? svg("mods/tabs-tasks/win-min.svg").size(16) : "−", () => run("window.minimize")))
+         .child(button("maximize", w.platform === "windows" ? svg(`mods/tabs-tasks/${w.maximized ? "win-restore" : "win-max"}.svg`).size(16) : "□", () => run("window.maximize")))
+         .child(button("close-window", w.platform === "windows" ? svg("mods/tabs-tasks/win-close.svg").size(16) : svg("mods/pane/close.svg").size(13), () => run("window.close"))));

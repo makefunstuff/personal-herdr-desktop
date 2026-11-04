@@ -1,11 +1,11 @@
 #!/bin/sh
-# personal-herdr-desktop: install the themes, mods, Shepherdr panel and Desk into Herdr desktop; on macOS also the voice
-# computer, on Linux the typing sounds, time tracker, herdr-doc, the Neovim theme and (with Omarchy) the workbench theme.
+# personal-herdr-desktop: install the themes, mods, Shepherdr panel and Desk into Herdr desktop, herdr-doc, the Neovim
+# theme, typing sounds and the time tracker; on macOS also the voice computer, on Linux (with Omarchy) the workbench theme.
 # Everything it replaces is backed up next to the original as <file>.bak.<time>. Re-run after pulling to update.
 #
 #   ./install.sh               everything for this system
 #   ./install.sh --no-voice    macOS: without the voice computer
-#   ./install.sh --timetrack   Linux: also start the time tracker (samples the focused window's title every 30 s, kept locally)
+#   ./install.sh --timetrack   also start the time tracker (samples the focused window's title every 30 s, kept locally)
 set -e
 REPO="$(cd "$(dirname "$0")" && pwd)"
 SRC="$REPO/herdr-app"
@@ -15,7 +15,15 @@ OS=$(uname -s); VOICE=0; [ "$OS" = Darwin ] && VOICE=1; TIMETRACK=0
 for a in "$@"; do case $a in --no-voice) VOICE=0 ;; --timetrack) TIMETRACK=1 ;; esac; done
 
 [ -d "$DST" ] || { echo "No Herdr app folder at $DST: start Herdr once first."; exit 1; }
-backup() { [ -e "$1" ] && cp -R "$1" "$1.bak.$TS" || true; }
+# Backups sit next to the original as <file>.bak.<time>, except in mods/, lib/ and core/ (a folder in mods/ is loaded
+# as a mod; lib/ and core/ are Shepherdr's): those go to backups/<time>/, by the same path.
+backup() {
+  [ -e "$1" ] || return 0
+  case $1 in
+    "$DST"/mods/*|"$DST"/lib/*|"$DST"/core/*) r=${1#"$DST"/}; mkdir -p "$DST/backups/$TS/$(dirname "$r")"; cp -R "$1" "$DST/backups/$TS/$r" ;;
+    *) cp -R "$1" "$1.bak.$TS" ;;
+  esac
+}
 put() { mkdir -p "$(dirname "$2")"; if [ -e "$2" ] && ! cmp -s "$1" "$2"; then backup "$2"; fi; cp "$1" "$2"; }
 
 echo "== Herdr: themes, layouts, art, sounds, fonts, icons"
@@ -34,36 +42,82 @@ for m in "$SRC"/mods/*; do
 done
 
 if [ -d "$DST/mods/chat" ] && command -v patch >/dev/null; then
-  echo "== Shepherdr 3.0: square corners and theme colours in these layouts, chat fixes (zoom, reasoning shown)"
+  echo "== Shepherdr 3.x: square corners and theme colours in these layouts, chat fixes (zoom, reasoning shown), this repo's buttons in its tab bar"
   P="$SRC/shepherdr-patches"
-  for u in "$DST"/mods/*/ui.js; do
-    patch -s -R --dry-run "$u" < "$P/ui.js.patch" >/dev/null 2>&1 && continue   # already in
-    patch -s --dry-run "$u" < "$P/ui.js.patch" >/dev/null 2>&1 && { backup "$u"; patch -s "$u" < "$P/ui.js.patch"; } || echo "  $u: not Shepherdr 3.0.0's, left as is"
+  # -N -t: never ask, never apply a patch in reverse. Without them macOS's patch answers its own "Reversed (or
+  # previously applied) patch detected!" question with yes, so a reverse dry run "succeeds" on an unpatched file.
+  applies() { patch -s -N -t --dry-run "$@" </dev/null >/dev/null 2>&1; }   # applies cleanly, forwards
+  applied() { patch -s -R -N -t --dry-run "$@" </dev/null >/dev/null 2>&1; } # already in
+  # Shepherdr 3.1 keeps one source of each shared module (lib/ui.js, core/chat-log.js) and checks that every mod's
+  # copy equals it (bin/sync-shared --check, part of `shepherdr doctor`): the source is patched too.
+  for u in "$DST"/lib/ui.js "$DST"/mods/*/ui.js; do
+    [ -f "$u" ] || continue
+    applied "$u" -i "$P/ui.js.patch" && continue
+    if applies "$u" -i "$P/ui.js.patch"; then backup "$u"; patch -s -N -t "$u" -i "$P/ui.js.patch" </dev/null; else echo "  $u: not Shepherdr 3.x's, left as is"; fi
   done
-  if ! (cd "$DST/mods" && patch -s -R -p1 --dry-run < "$P/chat.patch" >/dev/null 2>&1); then
-    (cd "$DST/mods" && patch -s -p1 --dry-run < "$P/chat.patch" >/dev/null 2>&1) && { backup "$DST/mods/chat"; (cd "$DST/mods" && patch -s -p1 < "$P/chat.patch"); } \
-      || echo "  mods/chat: not Shepherdr 3.0.0's, chat patch left out"
-  fi
+  # mods/chat: chat.patch fits Shepherdr 3.0.0, chat-3.1.patch 3.1 (its log moved to core/chat-log.js).
+  # mods/tabs-tasks: PR, Reviews, Docs, Time, Desk and Pair beside its own panels, and cmd-alt-k for typing sounds.
+  for d in "$DST" "$DST/mods/chat"; do
+    [ -f "$d/core/chat-log.js" ] || continue
+    applied -d "$d" -p1 -i "$P/core-chat-log-3.1.patch" && continue
+    if applies -d "$d" -p1 -i "$P/core-chat-log-3.1.patch"; then backup "$d/core/chat-log.js"; patch -s -N -t -d "$d" -p1 -i "$P/core-chat-log-3.1.patch" </dev/null
+    else echo "  $d/core/chat-log.js: not Shepherdr 3.1's, reasoning lines left out"; fi
+  done
+  for pp in chat.patch,chat chat-3.1.patch,chat tabs-tasks.patch,tabs-tasks; do
+    f=${pp%,*} m=${pp#*,}
+    [ -d "$DST/mods/$m" ] || continue
+    applied -d "$DST/mods" -p1 -i "$P/$f" && { echo "  $f: already in"; continue; }
+    if applies -d "$DST/mods" -p1 -i "$P/$f"; then
+      backup "$DST/mods/$m"; patch -s -N -t -d "$DST/mods" -p1 -i "$P/$f" </dev/null; echo "  $f: applied"
+    else echo "  $f: doesn't fit this mods/$m, left out"; fi
+  done
 fi
 
-echo "== Herdr: layouts keep only the panels whose mods are installed (Shepherdr 3.0's tasks, chat, artifacts...)"
-python3 - "$DST" <<'PY'
-import json, os, sys
-home = sys.argv[1]
+echo "== Herdr: layouts keep only the panels whose mods are installed (Shepherdr 3.x's tasks, chat, artifacts...)"
+python3 - "$DST" "$SRC" "$TS" <<'PY'
+import copy, json, os, shutil, sys
+home, src, ts = sys.argv[1:4]
+missing = lambda c: isinstance(c, dict) and (m := (c.get("content") or {}).get("mod")) and not os.path.isdir(f"{home}/mods/{m}")
 def strip(n):
     if isinstance(n, dict):
-        if "children" in n:
-            keep = [c for c in n["children"] if not (isinstance(c, dict) and (m := c.get("content", {}).get("mod")) and not os.path.isdir(f"{home}/mods/{m}"))]
-            if len(keep) != len(n["children"]):
-                n["children"] = keep
-                if n.get("active") and n["active"] not in [c.get("id") for c in keep]: n["active"] = keep[0]["id"] if keep else None
+        # Blocks in a split or stack (children) and floating ones (floating) alike.
+        for key in ("children", "floating"):
+            if key in n:
+                keep = [c for c in n[key] if not missing(c)]
+                if len(keep) != len(n[key]):
+                    n[key] = keep
+                    if key == "children" and n.get("active") and n["active"] not in [c.get("id") for c in keep]: n["active"] = keep[0]["id"] if keep else None
         for v in n.values(): strip(v)
     elif isinstance(n, list):
         for v in n: strip(v)
+def find(n, id):
+    if isinstance(n, dict):
+        if n.get("id") == id: return n
+        for key in ("children", "floating"):
+            for c in n.get(key, []):
+                if (f := find(c, id)): return f
+    return None
+# Shepherdr 3.x runs its background work (service, inbox, new spaces' Assistants, its key commands) in its tab bar,
+# mods/tabs-tasks: with it installed, the tab bar is that one here too (patched with this repo's buttons).
+sh3 = os.path.isdir(f"{home}/mods/tabs-tasks")
 for name in ("workbench", "fortress", "pixel"):
     p = f"{home}/layouts/{name}.json"
     if os.path.exists(p):
-        d = json.load(open(p)); strip(d); json.dump(d, open(p, "w"), indent=2)
+        d = json.load(open(p))
+        tabs = find(d, "tabs")
+        if sh3 and tabs and (tabs.get("content") or {}).get("mod") == "px-tabs": tabs["content"]["mod"] = "tabs-tasks"
+        strip(d); json.dump(d, open(p, "w"), indent=2)
+# Shepherdr's own layout: this repo's panels (PR, Reviews, Docs, Time), Desk, usage and sysmon, as in workbench.
+p = f"{home}/layouts/shepherdr.json"
+if sh3 and os.path.exists(p):
+    d = json.load(open(p)); wb = json.load(open(f"{src}/layouts/workbench.json")); before = json.dumps(d)
+    for id, parent in (("pr", "panel-body"), ("reviews", "panel-body"), ("docs", "panel-body"), ("time", "panel-body"),
+                       ("desk", "work-body"), ("usage", "sidebar-lists"), ("sysmon", "sidebar-lists")):
+        node, into = find(wb, id), find(d, parent)
+        if node and into and not find(d, id): into.setdefault("children", []).append(copy.deepcopy(node))
+    strip(d)
+    if json.dumps(d) != before:
+        shutil.copy(p, f"{p}.bak.{ts}"); json.dump(d, open(p, "w"), indent=2)
 PY
 
 if [ "$VOICE" = 1 ]; then
@@ -86,15 +140,69 @@ if [ "$VOICE" = 1 ]; then
   echo "== Voice computer"
   command -v go >/dev/null || { echo "Go is needed for the voice computer (brew install go), or run with --no-voice."; exit 1; }
   for t in llama-server llama-tts rec afplay; do command -v $t >/dev/null || echo "  missing: $t (brew install llama.cpp sox)"; done
-  (cd "$REPO/voice-computer" && mkdir -p "$HOME/.local/bin" && go build -o "$HOME/.local/bin/vc" ./cmd/vc && sh install/app.sh)
+  (cd "$REPO/voice-computer" && mkdir -p "$HOME/.local/bin" && go build -o "$HOME/.local/bin/vc" ./cmd/vc)
+  # "Herdr Voice.app" only when cmd/herdr-voice changed: a new ad-hoc build loses the microphone permission.
+  # An app already there with no record is taken as current.
+  vsum=$(cd "$REPO/voice-computer" && find cmd/herdr-voice -type f | sort | xargs shasum -a 256 | shasum -a 256 | cut -c1-64)
+  vstamp="$HOME/.local/share/personal-herdr-desktop/herdr-voice.sha256"; mkdir -p "$(dirname "$vstamp")"
+  if [ -d "$HOME/Applications/Herdr Voice.app" ] && [ ! -f "$vstamp" ]; then echo "$vsum" > "$vstamp"; fi
+  [ "$(cat "$vstamp" 2>/dev/null)" = "$vsum" ] || { (cd "$REPO/voice-computer" && sh install/app.sh) && echo "$vsum" > "$vstamp"; }
+  # Its pill floating in the px layouts, its keys where free, the mic in px-tabs (voice-computer/herdr/install.py).
+  python3 "$REPO/voice-computer/herdr/install.py"
   echo "  Models download on first start (LFM3-Omni-2B, LFM3-Audio-2B, EmbeddingGemma: about 3.5 GB)."
 fi
 
+L="$REPO/linux"; M="$REPO/macos"; O="$REPO/omarchy"
+echo "== herdr-doc and its Claude Code skill"
+put "$L/bin/herdr-doc" "$HOME/.local/bin/herdr-doc"; chmod +x "$HOME/.local/bin/herdr-doc"
+[ -d "$HOME/.claude" ] && put "$L/skills/herdr-doc/SKILL.md" "$HOME/.claude/skills/herdr-doc/SKILL.md"
+if [ -d "$HOME/.config/nvim" ]; then
+  echo "== Neovim: the herdr colorscheme (follows Herdr's layout) and workbench (your colorscheme stays as it is)"
+  for f in colors/herdr.lua colors/workbench.lua lua/herdr_theme.lua lua/config/herdr_desktop.lua; do put "$L/nvim/$f" "$HOME/.config/nvim/$f"; done
+  grep -rqs "config.herdr_desktop" "$HOME/.config/nvim/lua" "$HOME/.config/nvim/init.lua" || echo "  herdr-nvim on Herdr Desktop: call require('config.herdr_desktop').setup() after require('herdr-nvim').setup() (see README)"
+fi
+mkdir -p "$HOME/.local/share/herdr-typing/mxblue"; cp "$L"/typing/mxblue/*.wav "$L"/typing/mxblue/*.txt "$HOME/.local/share/herdr-typing/mxblue/"
+
+if [ "$OS" = Darwin ]; then
+  echo "== macOS: typing sounds (Cherry MX Blue) and the time tracker, as LaunchAgents"
+  put "$M/bin/herdr-typing-toggle" "$HOME/.local/bin/herdr-typing-toggle"; chmod +x "$HOME/.local/bin/herdr-typing-toggle"
+  # Built again only when their source changed: macOS keeps a permission (Input Monitoring, Accessibility) for
+  # this exact build, and a new one has to be allowed again.
+  build() {
+    sum=$(shasum -a 256 "$M/src/$1.swift" | cut -c1-64); stamp="$HOME/.local/share/personal-herdr-desktop/$1.sha256"
+    [ -x "$HOME/.local/bin/$1" ] && [ "$(cat "$stamp" 2>/dev/null)" = "$sum" ] && return 0
+    command -v swiftc >/dev/null || { echo "  $1: swiftc is needed (xcode-select --install)"; return 1; }
+    mkdir -p "$(dirname "$stamp")"
+    swiftc -O -o "$HOME/.local/bin/$1.new" "$M/src/$1.swift" && mv "$HOME/.local/bin/$1.new" "$HOME/.local/bin/$1" && echo "$sum" > "$stamp" && echo "  built $1"
+  }
+  agent() {
+    plist="$HOME/Library/LaunchAgents/dev.personal-herdr-desktop.$1.plist"; mkdir -p "$HOME/Library/LaunchAgents" "$HOME/Library/Logs"
+    sed -e "s#NAME#$1#g" -e "s#HOME#$HOME#g" "$M/launchd/agent.plist" > "$plist.new"
+    if cmp -s "$plist.new" "$plist" && launchctl print "gui/$(id -u)/dev.personal-herdr-desktop.$1" >/dev/null 2>&1; then
+      rm "$plist.new"; launchctl kickstart -k "gui/$(id -u)/dev.personal-herdr-desktop.$1"; return 0
+    fi
+    mv "$plist.new" "$plist"; launchctl bootout "gui/$(id -u)/dev.personal-herdr-desktop.$1" 2>/dev/null || true
+    for i in 1 2 3 4 5; do launchctl bootstrap "gui/$(id -u)" "$plist" 2>/dev/null && { echo "  $1: running (LaunchAgent)"; return 0; }; sleep 1; done
+    echo "  $1: launchctl bootstrap failed"
+  }
+  build herdr-keyclick && agent herdr-keyclick
+  build herdr-timetrack && [ "$TIMETRACK" = 1 ] && agent herdr-timetrack
+  # cmd-alt-k mutes the typing sounds (Shepherdr 3.x's tab bar runs herdr-typing-toggle), where it's free.
+  [ -d "$DST/mods/tabs-tasks" ] && python3 - "$DST/keys.json" "$TS" <<'PY2'
+import json, os, shutil, sys
+p = sys.argv[1]; cur = json.load(open(p)) if os.path.exists(p) else {}
+taken = {k for v in cur.values() if isinstance(v, dict) for k in v}
+if "cmd-alt-k" not in taken:
+    if os.path.exists(p): shutil.copy(p, f"{p}.bak.{sys.argv[2]}")
+    cur.setdefault("global", {})["cmd-alt-k"] = "tabs-tasks.typing-toggle"; json.dump(cur, open(p, "w"), indent=2)
+    print("  cmd-alt-k: typing sounds on and off")
+elif cur.get("global", {}).get("cmd-alt-k") != "tabs-tasks.typing-toggle": print("  cmd-alt-k is taken: run herdr-typing-toggle to mute")
+PY2
+fi
+
 if [ "$OS" = Linux ]; then
-  L="$REPO/linux"; O="$REPO/omarchy"
-  echo "== Linux: herdr-doc, time tracker, typing sounds (Cherry MX Blue)"
-  for f in herdr-doc herdr-timetrack herdr-keyclick herdr-typing-toggle; do put "$L/bin/$f" "$HOME/.local/bin/$f"; chmod +x "$HOME/.local/bin/$f"; done
-  mkdir -p "$HOME/.local/share/herdr-typing/mxblue"; cp "$L"/typing/mxblue/*.wav "$HOME/.local/share/herdr-typing/mxblue/"
+  echo "== Linux: time tracker, typing sounds (Cherry MX Blue)"
+  for f in herdr-timetrack herdr-keyclick herdr-typing-toggle; do put "$L/bin/$f" "$HOME/.local/bin/$f"; chmod +x "$HOME/.local/bin/$f"; done
   for u in herdr-keyclick herdr-timetrack; do put "$L/systemd/$u.service" "$HOME/.config/systemd/user/$u.service"; done
   if [ -f "$HOME/.config/hypr/hyprland.lua" ]; then
     put "$L/hypr/herdr-typing.lua" "$HOME/.config/hypr/herdr-typing.lua"
@@ -103,12 +211,6 @@ if [ "$OS" = Linux ]; then
   systemctl --user daemon-reload
   systemctl --user enable --now herdr-keyclick.service
   [ "$TIMETRACK" = 1 ] && systemctl --user enable --now herdr-timetrack.service
-  if [ -d "$HOME/.config/nvim" ]; then
-    echo "== Neovim: the herdr colorscheme (follows Herdr's layout) and workbench"
-    for f in colors/herdr.lua colors/workbench.lua lua/herdr_theme.lua lua/config/herdr_desktop.lua; do put "$L/nvim/$f" "$HOME/.config/nvim/$f"; done
-    grep -rqs "config.herdr_desktop" "$HOME/.config/nvim/lua" "$HOME/.config/nvim/init.lua" || echo "  herdr-nvim on Herdr Desktop: call require('config.herdr_desktop').setup() after require('herdr-nvim').setup() (see README)"
-  fi
-  [ -d "$HOME/.claude" ] && put "$L/skills/herdr-doc/SKILL.md" "$HOME/.claude/skills/herdr-doc/SKILL.md"
   if command -v omarchy >/dev/null; then
     echo "== Omarchy: the workbench theme, icons and cursors, lock screen, screensaver, glyphs, sounds"
     mkdir -p "$HOME/.config/omarchy/themes" "$HOME/.local/share/icons"
@@ -133,7 +235,8 @@ cat <<'EOF'
 Done. Next:
   - Switch layouts with ctrl-shift-l: workbench, fortress, pixel.
   - Omarchy: `omarchy theme set workbench` (lock screen, cursors, menu and terminal fonts follow the theme).
-  - Typing sounds: SUPER+ALT+K mutes; HERDR_KEYS_CUTOFF=<Hz> in the service softens or brightens them.
+  - Typing sounds: SUPER+ALT+K (Linux) or cmd-alt-k in Herdr (macOS) mutes; HERDR_KEYS_CUTOFF=<Hz> softens or brightens them.
+  - macOS: allow herdr-keyclick under Input Monitoring and herdr-timetrack under Accessibility (System Settings > Privacy & Security).
   - Shepherdr on another machine: copy shepherdr-sources.example.json to shepherdr-sources.json and edit it.
 EOF
 [ "$VOICE" = 1 ] && cat <<'EOF'

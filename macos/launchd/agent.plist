@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- personal-herdr-desktop's LaunchAgents (install.sh fills NAME and HOME): herdr-keyclick, herdr-timetrack. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>dev.personal-herdr-desktop.NAME</string>
+  <key>ProgramArguments</key><array><string>HOME/.local/bin/NAME</string></array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
+  <key>ThrottleInterval</key><integer>10</integer>
+  <key>ProcessType</key><string>Interactive</string>
+  <key>StandardErrorPath</key><string>HOME/Library/Logs/NAME.log</string>
+</dict>
+</plist>

@@ -49,12 +49,15 @@ line number (or a file's `nvim` button) opens it there in Neovim: in the space's
 ([spec](herdr-app/mods/px-doc/SPEC.md)) drawn natively in the Docs panel: callouts, findings with evidence, timelines,
 tables, todos. `herdr-doc new|check|export|list`; a Claude Code skill tells agents to write these instead of HTML.
 
-**Time** (`mods/px-time`, `herdr-timetrack`, Linux): where the day goes, from a local sampler of the focused window
+**Time** (`mods/px-time`, `herdr-timetrack`): where the day goes, from a local sampler of the focused window
 (app, title, Herdr space and tab) every 30 s: active and idle time, by category, by Herdr space, by issue key, the day as
-10-minute slots, the last 7 days. Opt-in: `./install.sh --timetrack`.
+10-minute slots, the last 7 days. Opt-in: `./install.sh --timetrack` (Linux: a user service; macOS: a LaunchAgent,
+`macos/src/herdr-timetrack.swift`, that reads window titles once you allow it under Accessibility).
 
-**Shepherdr 3.0 patches** (`herdr-app/shepherdr-patches`, applied by the installer when Shepherdr 3.0.0's mods are
-there): its views follow the px layouts' look (square corners, the theme's status colours, capitals on workbench), and
+**Shepherdr 3.x patches** (`herdr-app/shepherdr-patches`, applied by the installer when Shepherdr 3.0.0's or 3.1's mods
+are there, to the mods and to Shepherdr's own `lib/` and `core/` sources so `shepherdr doctor` stays whole). With 3.x
+installed, the px layouts use its tab bar (`tabs-tasks`, which runs its service, inbox and new spaces' Assistants), with
+this repo's PR, Reviews, Docs, Time, Desk and Pair buttons patched in; its own `shepherdr` layout gets those panels too: its views follow the px layouts' look (square corners, the theme's status colours, capitals on workbench), and
 its chat works with Herdr zoomed (measured sizes converted to the units widths are given in, so the column is centred
 and the newest messages stay in view), shows the agent's reasoning as folded "Thinking" lines, no longer goes blank while a folded (Show more) reply
 is on screen (a handler the list refuses), and recovers from a blank list without re-laying out every message.
@@ -102,8 +105,10 @@ Microsoft assets are fetched on your machine, never stored in a repo.
 
 ## Platforms
 
-Both: themes, layouts, mods, art, sounds, the document formats, the sync script. macOS only: the voice computer
-(`Herdr Voice.app`, `afplay`/`rec`, `osascript`, Homebrew). Linux only: typing sounds, time tracker, Omarchy theme. The
+Both: themes, layouts, mods, art, sounds, the document formats, the sync script, herdr-doc, typing sounds and the time
+tracker (macOS: Swift LaunchAgents in `macos/`, built with `swiftc`; allow herdr-keyclick under Input Monitoring and
+herdr-timetrack under Accessibility; `cmd-alt-k` mutes the clicks). macOS only: the voice computer (`Herdr Voice.app`,
+`afplay`/`rec`, `osascript`, Homebrew). Linux only: Omarchy theme. The
 installer drops layout panels whose mods aren't installed (Shepherdr 3.0's tasks, chat and artifacts come with it).
 
 ## Licence
