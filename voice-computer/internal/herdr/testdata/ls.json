@@ -1,0 +1,17 @@
+{"spaces": [
+ {"id": "sp1", "name": "Work", "folder": "/Users/x", "machine": null, "active": true, "tabs": [
+   {"id": "tb1", "name": "1", "active": true, "terminals": [{"terminal": "t3", "pane": "p1", "status": "working", "app": "claude-code", "name": null, "sub_agents": []}]},
+   {"id": "tb2", "name": "Shepherdr", "active": false, "terminals": []}]},
+ {"id": "gpubox/sp2", "name": "home", "machine": "gpubox", "active": false, "tabs": [
+   {"id": "gpubox/tb3", "name": "coordinator", "active": true, "terminals": [{"terminal": "gpubox/t5j", "status": "idle", "app": "claude-code", "name": "shep-1"}]}]},
+ {"id": "gpubox/sp3", "name": "semantic-grep-nvim", "machine": "gpubox", "active": false, "tabs": [
+   {"id": "gpubox/tb4", "name": "coordinator", "active": true, "terminals": [{"terminal": "gpubox/t80", "status": "idle", "app": "claude-code", "name": "shep-2"}]},
+   {"id": "gpubox/tb5", "name": "SEMA-3", "active": false, "terminals": [{"terminal": "gpubox/t81", "status": "working", "app": "claude-code", "name": "shep-3"}]},
+   {"id": "gpubox/tb6", "name": "SEMA-4", "active": false, "terminals": [{"terminal": "gpubox/t82", "status": "blocked", "app": "claude-code", "name": "shep-4"}]}]},
+ {"id": "gpubox/sp4", "name": "shepherdr", "machine": "gpubox", "active": false, "tabs": [
+   {"id": "gpubox/tb7", "name": "coordinator", "active": true, "terminals": [{"terminal": "gpubox/t90", "status": "idle", "app": "claude-code", "name": "shep-5"}]}]},
+ {"id": "gpubox/sp5", "name": "hardware-mmwave-lab", "machine": "gpubox", "active": false, "tabs": [
+   {"id": "gpubox/tb8", "name": "coordinator", "active": true, "terminals": [{"terminal": "gpubox/t91", "status": "done", "app": "codex", "name": null}]}]},
+ {"id": "gpubox/sp6", "name": "homelab", "machine": "gpubox", "active": false, "tabs": [
+   {"id": "gpubox/tb9", "name": "coordinator", "active": true, "terminals": [{"terminal": "gpubox/t92", "status": "idle", "app": "claude-code", "name": null}]}]}
+], "recent": []}

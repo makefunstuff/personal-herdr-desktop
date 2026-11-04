@@ -1,0 +1,11 @@
+{ "format": "herdr.doc/1", "title": "SEMA-5: Plain-sentence file search · Proof", "subtitle": "branch work/5-plain-sentence · 14:02", "status": "ready",
+  "blocks": [
+    { "type": "stats", "items": [ {"label": "tests", "value": "128", "tone": "ok"}, {"label": "p50", "value": "48 ms", "tone": "info"}, {"label": "failures", "value": "0", "tone": "ok"} ] },
+    { "type": "heading", "text": "Checks" },
+    { "type": "checks", "items": [ {"text": "unit tests", "ok": true}, {"text": "bench vs main", "ok": true, "note": "-12%"}, {"text": "review round 2", "ok": null, "note": "pending"} ] },
+    { "type": "steps", "items": [ {"text": "parse plain sentence", "state": "done"}, {"text": "rank files by meaning", "state": "done"}, {"text": "docs and changelog", "state": "now"}, {"text": "merge", "state": "todo"} ] },
+    { "type": "bars", "unit": "ms", "items": [ {"label": "main", "value": 55}, {"label": "this branch", "value": 48, "tone": "ok"} ] },
+    { "type": "kv", "items": [ ["branch", "work/5-plain-sentence"], ["PR", "#41"], ["commit", "a1b2c3d"] ] },
+    { "type": "callout", "tone": "warn", "text": "The old :SemanticGrep files syntax still works but is no longer documented." },
+    { "type": "diff", "file": "lua/semantic-grep/files.lua", "text": "@@ -10,3 +10,4 @@\n-local q = args\n+local q = sentence(args)\n local hits = rank(q)" }
+  ] }

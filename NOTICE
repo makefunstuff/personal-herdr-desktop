@@ -1,0 +1,13 @@
+personal-herdr-desktop
+
+herdr-app/mods/px-* are modified copies of mods shipped with Herdr (https://herdr.dev), Apache License 2.0
+(see LICENSE). Each modified file carries a notice on its first line.
+
+herdr-app/fonts/PxPlus_IBM_VGA_8x16.ttf: VileR, The Ultimate Oldschool PC Font Pack (int10h.org), CC BY-SA 4.0.
+herdr-app/fonts/PixelatedMSSansSerif-*.ttf: "lou" (fontstruct.com), CC BY-SA 3.0.
+
+voice-computer/ is MIT licensed (voice-computer/LICENSE).
+
+Everything else (themes, layouts, art, icons, sprites, sounds, the Shepherdr, Desk and voice mods, the herdr.doc/1
+format and renderer, the sync script) is original to this project and released under Apache-2.0.
+Liquid AI's LFM3 and Google's EmbeddingGemma models are downloaded at run time under their own licences; none are included.

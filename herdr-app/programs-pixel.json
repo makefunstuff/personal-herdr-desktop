@@ -1,0 +1,56 @@
+{
+  "programs": {
+    "shell": {
+      "icon": "pixel-icons/shell.svg",
+      "tint": false
+    },
+    "claude": {
+      "icon": "pixel-icons/claude.svg",
+      "tint": false
+    },
+    "agent": {
+      "icon": "pixel-icons/agent.svg",
+      "tint": false
+    },
+    "program": {
+      "icon": "pixel-icons/program.svg",
+      "tint": false
+    },
+    "git": {
+      "icon": "pixel-icons/git.svg",
+      "tint": false
+    },
+    "node": {
+      "icon": "pixel-icons/node.svg",
+      "tint": false
+    },
+    "python": {
+      "icon": "pixel-icons/python.svg",
+      "tint": false
+    },
+    "vim": {
+      "icon": "pixel-icons/vim.svg",
+      "tint": false
+    },
+    "docker": {
+      "icon": "pixel-icons/docker.svg",
+      "tint": false
+    },
+    "ssh": {
+      "icon": "pixel-icons/ssh.svg",
+      "tint": false
+    },
+    "npm": {
+      "icon": "pixel-icons/npm.svg",
+      "tint": false
+    },
+    "htop": {
+      "icon": "pixel-icons/htop.svg",
+      "tint": false
+    },
+    "nvim": {
+      "icon": "pixel-icons/nvim.svg",
+      "tint": false
+    }
+  }
+}

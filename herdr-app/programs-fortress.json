@@ -1,0 +1,76 @@
+{
+  "programs": {
+    "shell": {
+      "icon": "fortress-icons/pick.svg",
+      "tint": false
+    },
+    "claude": {
+      "icon": "fortress-icons/dwarf.svg",
+      "tint": false
+    },
+    "agent": {
+      "icon": "fortress-icons/helm.svg",
+      "tint": false
+    },
+    "codex": {
+      "icon": "fortress-icons/book.svg",
+      "tint": false
+    },
+    "program": {
+      "icon": "fortress-icons/crate.svg",
+      "tint": false
+    },
+    "git": {
+      "icon": "fortress-icons/tree.svg",
+      "tint": false
+    },
+    "node": {
+      "icon": "fortress-icons/gem.svg",
+      "tint": false
+    },
+    "python": {
+      "icon": "fortress-icons/snake.svg",
+      "tint": false
+    },
+    "vim": {
+      "icon": "fortress-icons/scroll.svg",
+      "tint": false
+    },
+    "nvim": {
+      "icon": "fortress-icons/scroll.svg",
+      "tint": false
+    },
+    "docker": {
+      "icon": "fortress-icons/barrel.svg",
+      "tint": false
+    },
+    "ssh": {
+      "icon": "fortress-icons/key.svg",
+      "tint": false
+    },
+    "npm": {
+      "icon": "fortress-icons/redcrate.svg",
+      "tint": false
+    },
+    "htop": {
+      "icon": "fortress-icons/hourglass.svg",
+      "tint": false
+    },
+    "make": {
+      "icon": "fortress-icons/anvil.svg",
+      "tint": false
+    },
+    "cargo": {
+      "icon": "fortress-icons/anvil.svg",
+      "tint": false
+    },
+    "go": {
+      "icon": "fortress-icons/gem.svg",
+      "tint": false
+    },
+    "bun": {
+      "icon": "fortress-icons/crate.svg",
+      "tint": false
+    }
+  }
+}

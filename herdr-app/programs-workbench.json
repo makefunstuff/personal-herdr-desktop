@@ -1,0 +1,76 @@
+{
+  "programs": {
+    "shell": {
+      "icon": "workbench-icons/shell.svg",
+      "tint": false
+    },
+    "claude": {
+      "icon": "workbench-icons/claude.svg",
+      "tint": false
+    },
+    "agent": {
+      "icon": "workbench-icons/agent.svg",
+      "tint": false
+    },
+    "codex": {
+      "icon": "workbench-icons/codex.svg",
+      "tint": false
+    },
+    "program": {
+      "icon": "workbench-icons/program.svg",
+      "tint": false
+    },
+    "git": {
+      "icon": "workbench-icons/git.svg",
+      "tint": false
+    },
+    "node": {
+      "icon": "workbench-icons/node.svg",
+      "tint": false
+    },
+    "python": {
+      "icon": "workbench-icons/python.svg",
+      "tint": false
+    },
+    "vim": {
+      "icon": "workbench-icons/vim.svg",
+      "tint": false
+    },
+    "nvim": {
+      "icon": "workbench-icons/nvim.svg",
+      "tint": false
+    },
+    "docker": {
+      "icon": "workbench-icons/docker.svg",
+      "tint": false
+    },
+    "ssh": {
+      "icon": "workbench-icons/ssh.svg",
+      "tint": false
+    },
+    "npm": {
+      "icon": "workbench-icons/npm.svg",
+      "tint": false
+    },
+    "htop": {
+      "icon": "workbench-icons/htop.svg",
+      "tint": false
+    },
+    "make": {
+      "icon": "workbench-icons/make.svg",
+      "tint": false
+    },
+    "cargo": {
+      "icon": "workbench-icons/cargo.svg",
+      "tint": false
+    },
+    "go": {
+      "icon": "workbench-icons/go.svg",
+      "tint": false
+    },
+    "bun": {
+      "icon": "workbench-icons/bun.svg",
+      "tint": false
+    }
+  }
+}
