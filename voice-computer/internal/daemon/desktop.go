@@ -76,7 +76,7 @@ func runDesktop(ctx context.Context, args ...string) (json.RawMessage, error) {
 	if !r.OK {
 		if r.Error != nil {
 			if r.Error.Code == "PERMISSION_DENIED" || strings.Contains(strings.ToLower(r.Error.Message), "accessibility") {
-				return nil, errors.New("Herdr Voice needs Accessibility in System Settings, Privacy and Security")
+				return nil, errors.New("Herdr Voice needs Accessibility in System Settings, Privacy and Security (" + r.Error.Code + ": " + oneLine(r.Error.Message, 160) + ")")
 			}
 			return nil, errors.New(r.Error.Message)
 		}
