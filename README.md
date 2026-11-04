@@ -63,7 +63,15 @@ is on screen (a handler the list refuses), and recovers from a blank list withou
 
 **Linux extras** (`linux/`): Herdr typing sounds (real Cherry MX Blue recordings from Mechvibes, softened; IBM Model M
 from bucklespring if present; SUPER+ALT+K mutes), a Neovim colorscheme `herdr` that follows Herdr's layout live (and a
-standalone `workbench` one).
+standalone `workbench` one). [herdr-nvim](https://github.com/ChmaraX/herdr-nvim) on Herdr Desktop
+(`lua/config/herdr_desktop.lua`): the plugin asks the legacy herdr server for agents; this sends its comments through
+`hc` to the agent in Neovim's own Herdr space (its tab's agent, else the space's only one or its `agent` tab, else a
+picker). Hook it into the plugin's spec:
+
+```lua
+{ 'ChmaraX/herdr-nvim', event = 'VeryLazy', opts = {},
+  config = function(_, opts) require('herdr-nvim').setup(opts); require('config.herdr_desktop').setup() end },
+```
 
 **Omarchy** (`omarchy/`): the `workbench` Omarchy theme (colours, three circuit wallpapers, bar), Workbench icons for
 apps and cursors, a workbench lock screen, a circuit-board / logic-analyzer screensaver, dot-matrix glyphs for the bar,

@@ -105,7 +105,8 @@ if [ "$OS" = Linux ]; then
   [ "$TIMETRACK" = 1 ] && systemctl --user enable --now herdr-timetrack.service
   if [ -d "$HOME/.config/nvim" ]; then
     echo "== Neovim: the herdr colorscheme (follows Herdr's layout) and workbench"
-    for f in colors/herdr.lua colors/workbench.lua lua/herdr_theme.lua; do put "$L/nvim/$f" "$HOME/.config/nvim/$f"; done
+    for f in colors/herdr.lua colors/workbench.lua lua/herdr_theme.lua lua/config/herdr_desktop.lua; do put "$L/nvim/$f" "$HOME/.config/nvim/$f"; done
+    grep -rqs "config.herdr_desktop" "$HOME/.config/nvim/lua" "$HOME/.config/nvim/init.lua" || echo "  herdr-nvim on Herdr Desktop: call require('config.herdr_desktop').setup() after require('herdr-nvim').setup() (see README)"
   fi
   [ -d "$HOME/.claude" ] && put "$L/skills/herdr-doc/SKILL.md" "$HOME/.claude/skills/herdr-doc/SKILL.md"
   if command -v omarchy >/dev/null; then
