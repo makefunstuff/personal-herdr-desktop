@@ -899,7 +899,7 @@ func (d *Daemon) fastResolves(ctx context.Context, f intent.Fast) bool {
 	}
 	c := f.Call
 	switch c.Name {
-	case "focus", "go_to_space", "send_to_agent", "agent_doing", "read_latest", "web_search":
+	case "focus", "go_to_space", "send_to_agent", "agent_doing", "read_latest", "web_search", "browse":
 	default:
 		return true
 	}
@@ -915,6 +915,9 @@ func (d *Daemon) fastResolves(ctx context.Context, f intent.Fast) bool {
 	case "send_to_agent":
 		_, _, ok := splitTell(c.Str("say"), w)
 		return ok
+	case "browse": // "what's on homelab" is about a space: the brain hears it
+		q := c.Str("site")
+		return len(w.FindAgents(q)) == 0 && len(w.FindSpaces(q)) == 0
 	case "web_search": // "what is homelab" is about an agent: the brain hears it
 		q := c.Str("query")
 		for _, p := range []string{"who is ", "who was ", "what is ", "whats ", "what are ", "where is "} {

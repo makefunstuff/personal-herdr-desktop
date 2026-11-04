@@ -1,5 +1,5 @@
 // Package desk writes the owner's notes where they can see them: plain markdown, one file a day,
-// ~/Work/desk-notes/daily/YYYY-MM-DD.md, starting "# YYYY-MM-DD". A note is "- HH:MM text", a reminder
+// <notes_dir>/daily/YYYY-MM-DD.md (the Desk panel's: ~/.config/herdr-app/desk-notes), starting "# YYYY-MM-DD". A note is "- HH:MM text", a reminder
 // "- [ ] HH:MM text" (checked when it rang or was cancelled), a finished focus "- HH:MM 🍅 25m focus: task".
 package desk
 

@@ -10,7 +10,7 @@ import (
 func TestLoad(t *testing.T) {
 	dir := t.TempDir()
 	c, err := Load(filepath.Join(dir, "none.json"))
-	if err != nil || c.Backend != "openai" || c.Chat.URL != "http://127.0.0.1:8790" || c.History != 60 || c.TapMS != 300 ||
+	if err != nil || c.Backend != "openai" || c.Chat.URL != "http://127.0.0.1:8790" || c.History != 200 || c.TapMS != 300 ||
 		c.Name != "Herdr" {
 		t.Fatalf("defaults: %+v %v", c, err)
 	}

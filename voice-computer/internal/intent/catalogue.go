@@ -70,6 +70,17 @@ func Catalogue() []Tool {
 		tool("web_search", "Look a question of fact about the world up on the web (people, places, things, events, definitions). Never for Herdr, its agents, or the owner's own notes.", map[string]any{
 			"query": str("A short web search query."),
 		}, "query"),
+		tool("browse", "Open a website and read it, when the owner names a site or page to look at (\"what's on hacker news\", \"check the go blog for the newest post\"). Read-only.", map[string]any{
+			"site":     str("The site's address or name, like \"news.ycombinator.com\" or \"hacker news\"."),
+			"question": str("What the owner wants to know from it, in their words."),
+		}, "site"),
+		tool("read_app", "Read what a Mac app's window shows and answer from it (\"what's in my Telegram\", \"what's playing in Spotify\"). Read-only.", map[string]any{
+			"app":      str("The app's name, like \"Firefox\" or \"Telegram\"."),
+			"question": str("What the owner wants to know from it, in their words."),
+		}, "app"),
+		tool("open_app", "Open (launch) a Mac app by name.", map[string]any{
+			"app": str("The app's name, like \"Firefox\"."),
+		}, "app"),
 		tool("read_page", "Read more of the page the last web search found, when the owner asks for more about it.", map[string]any{}),
 		tool("pomodoro", "Pomodoro timer: start a focus session, take a break, pause, resume, stop, add minutes, say the time left, or the stats.", map[string]any{
 			"action":  enum("What to do.", "start", "break", "pause", "resume", "stop", "add", "status", "stats"),
@@ -108,6 +119,8 @@ const ToolInstructions = `Your tools act on Herdr, the app where the owner's ter
 	`gets no tool: just answer it. Never call a tool because of the context line. ` +
 	`Pass names as the owner said them; never make up a name, a path or a command. Up to three tools for one ` +
 	`request. A tool result is said to the owner as it is: after a tool, say nothing more. ` +
+	`A Mac app the owner wants to look at goes to read_app, one to open goes to open_app (never for a Herdr space or agent). ` +
+	`A website the owner names (\"what's on hacker news\", \"check the go blog\") goes to browse, with their question. ` +
 	`A question of fact about the world (a person, a place, a thing, an event, a definition) goes to web_search. A sum, ` +
 	`a conversion or a guess about the future gets no tool: say in one sentence that you'd only be guessing. A question the context line answers (the time, the layout, how many agents work or wait) gets ` +
 	`no tool: answer it from the context line.`

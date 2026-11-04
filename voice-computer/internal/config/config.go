@@ -107,6 +107,10 @@ type Config struct {
 	MaxOutputTokens int    `json:"max_output_tokens"`
 	// A spoken answer stops after this many sentences (0: never); the instructions ask for one.
 	MaxSentences int `json:"max_sentences"`
+	// Think: the brain thinks privately before a turn (a short request of its own, about a second).
+	Think bool `json:"think"`
+	// Learn: after a turn, what the owner said about themselves or how you should talk goes to memory.
+	Learn bool `json:"learn"`
 	// A card cancels itself after this long.
 	CardTimeoutS int `json:"card_timeout_s"`
 	// "note: …" appends here, timestamped.
@@ -159,7 +163,8 @@ const DefaultInstructions = `You are %[1]s, %[2]s's executive assistant inside H
 	`with %[2]s, the notes the context gives you, and your earlier conversations with ` +
 	`%[2]s (this one and the summary of earlier days: refer back to them naturally, "like you mentioned yesterday"). For a question of fact about the world, call web_search; never ` +
 	`for Herdr, its agents or the owner's own things. When the owner asks the ` +
-	`computer to do something, use a tool. For any other question, say plainly in one sentence that you don't ` +
+	`computer to do something, use a tool, and never say you did something (wrote a note, sent a message, set a ` +
+	`timer, opened a space) unless you called the tool for it in this turn. For any other question, say plainly in one sentence that you don't ` +
 	`know%[4]s, or that you'd only be guessing. If you didn't understand, ask back briefly. Think briefly: a few short sentences of reasoning at most.` + "\n\n" +
 	`When %[2]s tells you how to talk from now on ("from now on", "I prefer", "always", "never", "stop …"), or ` +
 	`corrects you ("no, X is Y"), call remember first: kind style for how you talk, kind correction for a mistake, ` +
@@ -226,7 +231,7 @@ func Default() Config {
 			Args: []string{"--embedding", "-c", "2048", "-np", "1"}},
 		Embed:            Endpoint{URL: "http://127.0.0.1:8793", Model: "embeddinggemma"},
 		Search:           SearchConfig{Enabled: true, DeepSeekKeyFile: ""},
-		NotesDir:         filepath.Join(home(), "Work/desk-notes"),
+		NotesDir:         filepath.Join(home(), ".config/herdr-app/desk-notes"), // the Desk panel's (mods/desk)
 		Name:             "Herdr",
 		Voice:            "female",
 		ChatExtra:        map[string]any{"temperature": 0.2},
@@ -236,12 +241,14 @@ func Default() Config {
 		MaxTurnS:         30,
 		IdleCloseS:       120,
 		OverlayHideS:     8,
-		History:          60,
+		History:          200, // kept and shown; the brain gets what fits ContextTokens, the rest condensed in the summary
 		ContextTokens:    6000,
 		ConversationDays: 30,
 		Owner:            owner,
 		Instructions:     Instructions("Herdr", owner, ""),
 		MaxOutputTokens:  450,
+		Think:            false, // LFM3-Omni-2B invents tool results in a forced thought: off until a brain reasons
+		Learn:            true,
 		MaxSentences:     5,
 		CardTimeoutS:     30,
 		NotesFile:        filepath.Join(DataDir(), "notes.md"),

@@ -50,18 +50,31 @@ def strip_blocks(src):
             skip = False
     return "".join(out)
 
-def px_tabs(uninstall):
-    p = os.path.join(HOME, "mods/px-tabs/main.js")
-    src = strip_blocks(open(p).read())
-    if not uninstall:
-        anchor = "const GS = () =>"
-        i = src.index("\n", src.index(anchor)) + 1
-        src = src[:i] + HELPER + src[i:]
-        anchor = '      .child(button("tab-new", "+"'
-        if anchor not in src:
-            sys.exit("px-tabs: no + button to put the mic before; left as it was")
-        src = src.replace(anchor, CHILD + anchor, 1)
-    write(p, src)
+def tab_bars(uninstall):
+    # The mic goes before the + of every tab bar installed: px-tabs, and Shepherdr 3.x's tabs-tasks, which the
+    # layouts use once Shepherdr is installed. Re-run after a Shepherdr update (it rewrites tabs-tasks).
+    found = False
+    for name in ("px-tabs", "tabs-tasks"):
+        p = os.path.join(HOME, "mods", name, "main.js")
+        if not os.path.exists(p):
+            continue
+        src = strip_blocks(open(p).read())
+        if not uninstall:
+            anchor = "const GS = () =>"
+            if anchor not in src:
+                print(f"{name}: no glyph helper to put the mic beside; left as it was")
+                continue
+            i = src.index("\n", src.index(anchor)) + 1
+            src = src[:i] + HELPER + src[i:]
+            anchor = '      .child(button("tab-new", '
+            if anchor not in src:
+                print(f"{name}: no + button to put the mic before; left as it was")
+                continue
+            src = src.replace(anchor, CHILD + anchor, 1)
+            found = True
+        write(p, src)
+    if not uninstall and not found:
+        sys.exit("no tab bar took the mic (px-tabs or tabs-tasks)")
     for style in ("g", "gw", "gf"):
         dst = os.path.join(HOME, "mods/px-tabs", style, "mic.svg")
         if uninstall:
@@ -120,6 +133,6 @@ def layouts(uninstall):
 if __name__ == "__main__":
     un = "--uninstall" in sys.argv
     mod(un)
-    px_tabs(un)
+    tab_bars(un)
     keys_json(un)
     layouts(un)

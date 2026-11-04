@@ -152,11 +152,15 @@ export default class Voice extends View {
         .child(it.what ? `${it.who}: ${oneLine(it.what, 120)}` : `${it.who} is waiting`))));
     rem.forEach((r, i) => body.child(h_flex().id(`rem-${i}`).gap(7).items_center()
       .child(div().flex_none().text_color(t.dim).child(clock(r.due))).child(div().flex_1().min_w(0).truncate().child(r.text || "Reminder"))));
-    const turns = (s.turns ?? []).slice(-5);
+    // The whole conversation vcd keeps (it replays it to the brain, older days condensed in its summary),
+    // newest first so the latest is in view without scrolling; the list scrolls back through the rest.
+    const turns = [...(s.turns ?? [])].reverse();
     if (turns.length) {
-      body.child(div().pt(4).text_size(11).font_semibold().text_color(t.muted).child("LAST TURNS (memory only)"));
-      turns.forEach((x, i) => body.child(v_flex().id(`turn-${i}`).gap(1).pl(8).border_l(2).border_color(t.border)
-        .child(div().text_color(t.muted).child(oneLine(x.you, 200))).child(div().child(oneLine(x.computer, 300)))));
+      body.child(div().pt(4).text_size(11).font_semibold().text_color(t.muted).child(`CONVERSATION · ${turns.length} turn${turns.length === 1 ? "" : "s"}`));
+      body.child(v_flex().id("voice-convo").max_h(380).overflow_y_scroll().gap(8).pr(4)
+        .children(turns.map((x, i) => v_flex().id(`turn-${i}`).gap(2).pl(8).border_l(2).border_color(i === 0 ? t.accent : t.border)
+          .when(Boolean(x.you), (e) => e.child(div().text_color(t.muted).child(`You: ${x.you}`)))
+          .when(Boolean(x.computer), (e) => e.child(div().child(x.computer))))));
     }
     body.child(h_flex().pt(4).gap(6)
       .child(this.button(t, "talk", w === "listening" ? "Send" : `Talk (${s.talk_key})`, () => cmd("talk"), true))

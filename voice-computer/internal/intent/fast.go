@@ -92,7 +92,7 @@ var (
 
 	// On the transcript's own words (case and punctuation kept for the text).
 	tellRE   = regexp.MustCompile(`(?i)^\s*(?:please\s+)?(?:tell|reply to|answer|message|send(?: a message)? to|say to|ask)\s+(.+?)\s*$`)
-	noteRE   = regexp.MustCompile(`(?i)^\s*(?:please\s+)?(?:note|take a note|make a note|note down|write down|jot down)(?:\s+that)?\s*[:,.-]?\s+(.+?)\s*$`)
+	noteRE   = regexp.MustCompile(`(?i)^\s*(?:(?:hey|ok|okay|so)[\s,]+)?(?:(?:can|could|would|will) you\s+)?(?:please\s+)?(?:note to self|take a note|make a note|add a new note|add a note|add note|new note|save a note|create a note|put (?:this |that |it )?in(?:to)? my notes|note down|write down|jot down|write (?:a )?note|note)(?:\s+(?:that|saying))?\s*[:,.-]?\s+(.+?)\s*$`)
 	remindRE = regexp.MustCompile(`(?i)^\s*(?:please\s+)?remind me in\s+(.+?)\s+(seconds?|secs?|minutes?|mins?|hours?)\s*(?:to|that|about|of)?\s*(.*?)[.!]?\s*$`)
 	remind2  = regexp.MustCompile(`(?i)^\s*(?:please\s+)?remind me (?:to|that|about)\s+(.+?)\s+in\s+(.+?)\s+(seconds?|secs?|minutes?|mins?|hours?)[.!]?\s*$`)
 	tellMeRE = regexp.MustCompile(`(?i)^(me|us|you|yourself)\b`)
@@ -259,7 +259,8 @@ func Match(text string, cardOpen bool) (Fast, bool) {
 	if m := forgetRE.FindStringSubmatch(text); m != nil && !forgetItRE.MatchString(t) {
 		return toolCall("forget", "text", strings.TrimRight(m[1], ".!?")), true
 	}
-	if m := noteRE.FindStringSubmatch(text); m != nil && !strings.HasPrefix(strings.ToLower(m[1]), "my notes") {
+	// Anything that looks like a secret goes to the brain, which won't write it down.
+	if m := noteRE.FindStringSubmatch(text); m != nil && !strings.HasPrefix(strings.ToLower(m[1]), "my notes") && !secretish.MatchString(m[1]) {
 		return toolCall("write_note", "text", m[1]), true
 	}
 	if m := tellRE.FindStringSubmatch(text); m != nil && len(strings.Fields(m[1])) >= 2 && !tellMeRE.MatchString(m[1]) {
@@ -284,11 +285,20 @@ func Match(text string, cardOpen bool) (Fast, bool) {
 	if m := readRE.FindStringSubmatch(t); m != nil {
 		return toolCall("read_latest", "agent", m[1]+m[2]), true
 	}
+	if m := appOpenRE.FindStringSubmatch(t); m != nil {
+		return toolCall("open_app", "app", m[1]+m[2]), true
+	}
+	if m := appReadRE.FindStringSubmatch(t); m != nil {
+		return toolCall("read_app", "app", m[1]+m[2], "question", text), true
+	}
+	if site, ok := browseSite(t); ok {
+		return toolCall("browse", "site", site, "question", text), true
+	}
 	if m := goRE.FindStringSubmatch(t); m != nil {
-		return toolCall("go_to_space", "space", m[1]), true
+		return toolCall("go_to_space", "space", placeName(m[1])), true
 	}
 	if m := focusRE.FindStringSubmatch(t); m != nil {
-		return toolCall("focus", "name", m[1]), true
+		return toolCall("focus", "name", placeName(m[1])), true
 	}
 	return Fast{}, false
 }
@@ -507,6 +517,13 @@ func norm(text string) string {
 	for len(f) > 1 && (f[0] == "please" || f[0] == "hey" || f[0] == "computer" || f[0] == "herdr" || f[0] == "herder") {
 		f = f[1:]
 	}
+	// A request asked politely is still the request: "can you open homelab", "could you please go to work".
+	for len(f) > 2 && (f[0] == "can" || f[0] == "could" || f[0] == "would" || f[0] == "will") && f[1] == "you" {
+		f = f[2:]
+		for len(f) > 1 && (f[0] == "please" || f[0] == "just") {
+			f = f[1:]
+		}
+	}
 	for len(f) > 1 {
 		switch last := f[len(f)-1]; {
 		case last == "please" || last == "thanks":
@@ -554,3 +571,48 @@ func Number(s string) (int, bool) {
 	}
 	return 0, false
 }
+
+// placeName drops what names the kind of place, not the place: "home lab workspace", "the work space".
+func placeName(s string) string {
+	f := strings.Fields(s)
+	if len(f) > 1 && f[0] == "the" {
+		f = f[1:]
+	}
+	for len(f) > 1 {
+		switch f[len(f)-1] {
+		case "workspace", "space", "project", "tab", "folder":
+			f = f[:len(f)-1]
+			continue
+		}
+		break
+	}
+	return strings.Join(f, " ")
+}
+
+var secretish = regexp.MustCompile(`(?i)\b(api key|password|passcode|token|secret|pin code|private key|credentials?)\b`)
+
+var (
+	browseOnRE   = regexp.MustCompile(`^(?:whats|what is|what are|anything new|whats new|whats happening|whats trending)(?: new| happening| trending| the news| the top stories| the latest)? on (.+?)(?: right now| today| now| at the moment| these days)?$`)
+	browseSiteRE = regexp.MustCompile(`^(?:open|check|read|look at|browse|show me|go to)(?: the)? (.+?) (?:website|site|homepage|web page|front page)$`)
+	browseDomRE  = regexp.MustCompile(`^(?:open|check|read|look at|browse|go to|show me)(?: the)? ((?:[a-z0-9-]+ )+(?:com|org|net|dev|io|ai|co|app|news))$`)
+)
+
+// browseSite is the site a request to look at a website names ("whats on hacker news", "open the go blog
+// website", "check news ycombinator com": the normaliser took the dots out).
+func browseSite(t string) (string, bool) {
+	if m := browseDomRE.FindStringSubmatch(t); m != nil {
+		return strings.ReplaceAll(m[1], " ", "."), true
+	}
+	if m := browseSiteRE.FindStringSubmatch(t); m != nil {
+		return m[1], true
+	}
+	if m := browseOnRE.FindStringSubmatch(t); m != nil && !strings.HasPrefix(m[1], "my ") && !strings.HasPrefix(m[1], "the agenda") {
+		return m[1], true
+	}
+	return "", false
+}
+
+var (
+	appOpenRE = regexp.MustCompile(`^(?:open|launch|start|fire up)(?: the)? (.+?) app$|^(?:launch|fire up) (?:the )?(.+)$`)
+	appReadRE = regexp.MustCompile(`^(?:whats|what is|read me|read|check)(?: new)? (?:in|on) my (.+?) app$|^(?:whats|what is) (?:in|on) my (.+?)(?: window)?$`)
+)

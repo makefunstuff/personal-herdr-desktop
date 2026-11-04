@@ -126,6 +126,7 @@ func newRig(t *testing.T, edit func(*config.Config)) *rig {
 	ep := config.Endpoint{URL: f.URL, Model: "test-chat", KeyFile: key}
 	cfg.STT, cfg.TTS, cfg.Chat = ep, ep, ep
 	cfg.OverlayHideS = 1
+	cfg.Think, cfg.Learn = false, false // their own brain requests are tested apart
 	cfg.NotesFile = filepath.Join(dir, "notes.md")
 	cfg.MemoryFile = filepath.Join(dir, "memory.md")
 	cfg.NotesDir = filepath.Join(dir, "desk-notes")

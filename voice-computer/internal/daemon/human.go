@@ -12,7 +12,7 @@ import (
 // the way a person rounds them.
 
 // slowTools may take longer than a breath: a filler covers the wait.
-var slowTools = map[string]bool{"web_search": true, "read_page": true, "agent_doing": true, "read_latest": true,
+var slowTools = map[string]bool{"web_search": true, "read_page": true, "browse": true, "read_app": true, "agent_doing": true, "read_latest": true,
 	"recall": true, "briefing": true, "needs_me": true}
 
 // fillerAfter says a filler if the tool is still running after 0.8 s; the returned func ends the wait.

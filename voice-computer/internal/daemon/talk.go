@@ -35,7 +35,16 @@ func (d *Daemon) lastKind() string {
 func (d *Daemon) recentTurnsLocked() []Turn {
 	budget := d.cfg.ContextTokens * 4
 	var out []Turn
+	// A reply said again is replayed once (its newest): a small model copies a line it sees repeated,
+	// and answers everything with it.
+	seen := map[string]bool{}
 	for i := len(d.turns) - 1; i >= 0; i-- {
+		if k := strings.ToLower(strings.Join(strings.Fields(d.turns[i].Computer), " ")); k != "" {
+			if seen[k] {
+				continue
+			}
+			seen[k] = true
+		}
 		n := len(d.turns[i].You) + len(d.turns[i].Computer) + 40
 		if d.cfg.ContextTokens > 0 && n > budget && len(out) > 0 {
 			break

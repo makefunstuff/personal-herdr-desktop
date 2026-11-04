@@ -53,7 +53,7 @@ const usage = `vc: the voice computer for Herdr (vcd and its two local LFM3 llam
   vc pomo start [min] [--task T] | break [min] | pause | resume | stop | add <min> | status
                               the pomodoro timer (prints its state as JSON)
   vc pomo stats [--json]      pomodoros today, this week, the streak, the last 14 days, top tasks
-  vc note add <text>          a note in today's ~/Work/desk-notes/daily file
+  vc note add <text>          a note in today's Desk notes file (~/.config/herdr-app/desk-notes/daily)
   vc note toggle <date> <n>   flip the checkbox on line n of that day's file
   vc latency                  p50 / p90 of each moment from vcd's log (timings only, no words)
 `

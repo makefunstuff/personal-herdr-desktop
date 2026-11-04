@@ -705,6 +705,15 @@ func (d *Daemon) sendTurnWith(gen int, pcm []byte, typed string, released time.T
 	if got := d.retrieve(ctx, text); got != "" {
 		line = joinText(line, got)
 	}
+	d.mu.Lock()
+	recent := d.recentTurnsLocked()
+	d.mu.Unlock()
+	if len(recent) > 4 {
+		recent = recent[len(recent)-4:]
+	}
+	if th := d.think(ctx, line, text, recent); th != "" {
+		line = joinText(line, "(Your private thinking before you answer; never say it or mention it: "+th+")")
+	}
 	// A card still open is cancelled first, and every call of it answered, so the brain never sees a
 	// new request after a tool call it has no answer for.
 	d.sendMu.Lock()
@@ -1117,6 +1126,9 @@ func (d *Daemon) addTurnLocked(t Turn) {
 			tools = d.lastLog.Intents
 		}
 		d.convo.Append(convo.Turn{At: t.At, You: t.You, Computer: t.Computer, Kind: d.lastKind(), Tools: tools})
+		if d.lastKind() == "brain" && t.You != "" {
+			go d.learn(t.You)
+		}
 		d.sinceSummary++
 		if d.sinceSummary >= 10 {
 			d.sinceSummary = 0
