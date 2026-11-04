@@ -213,20 +213,35 @@ export default class Shepherdr extends View {
     return parts.length ? [div().flex_none().text_size(10).text_color(t.dim).child(parts.join(" · "))] : [];
   }
   // What waits on the owner: Shepherdr's needs plus its open questions (`asks`, keyed by chat), one per chat.
-  waiting(snap) {
+  waiting(snap, src) {
     const out = [...(snap?.needs ?? [])], seen = new Set(out.map((n) => n.chat));
-    for (const [chat] of Object.entries(snap?.asks ?? {})) {
+    for (const [chat, qid] of Object.entries(snap?.asks ?? {})) {
       if (seen.has(chat)) continue; seen.add(chat);
       const place = (snap.places ?? []).find((p) => p.chat === chat);
       const task = (snap.tasks ?? []).find((k) => k.agent?.chat === chat);
-      out.push({ id: "ask", chat, place: place?.id ?? task?.place, task: task?.id, text: place ? `${place.name} coordinator asks you something` : "asks you something", at: 0 });
+      const title = src ? this.askTitle(src, chat, qid) : null;
+      out.push({ id: "ask", chat, place: place?.id ?? task?.place, task: task?.id,
+        text: title ?? (place ? `${place.name} coordinator asks you something` : "asks you something"), at: 0 });
     }
     return out;
+  }
+  // An open question's title, read once from its chat and cached by question id.
+  askTitle(src, chat, qid) {
+    this.askTitles ??= {};
+    const key = `${src.id}:${qid}`;
+    if (!(key in this.askTitles)) {
+      this.askTitles[key] = null;
+      get(src, `chat?chat=${encodeURIComponent(chat)}`).then((r) => {
+        const m = (r?.chat?.messages ?? []).find((x) => x.question?.id === qid);
+        this.askTitles[key] = m?.question?.title ?? null;
+      }).catch(() => {});
+    }
+    return this.askTitles[key];
   }
 
   sourceRows(t, src, out) {
     const st = this.state[src.id], s = st.snap;
-    const needs = this.waiting(s);
+    const needs = this.waiting(s, src);
     const closed = this.folded(`src:${src.id}`) === true;
     out.push(h_flex().id(`h-${src.id}`).w_full().px(10).pt(10).pb(5).gap(6).items_center().cursor_pointer()
       .border_t(1).border_color(t.border).hover((e) => e.bg(t.hover))
@@ -695,11 +710,24 @@ export default class Shepherdr extends View {
       wait += this.waiting(s).length; queued += q.length;
       out.push(live.length ? h_flex().w_full().p(12).gap(12).flex_wrap().children(live.map((k) => this.node(t, src, k)))
         : div().px(12).py(10).text_size(11).text_color(t.dim).child("NO ACTIVE NODES"));
+      const waits = this.waiting(s, src);
+      if (waits.length) out.push(v_flex().w_full().px(12).pb(10).gap(2)
+        .child(div().text_size(10.5).font_semibold().text_color(t.blocked).child(`WAITING ON YOU · ${waits.length}`))
+        .children(waits.slice(0, 12).map((n, i) => {
+          const place = (s.places ?? []).find((p) => p.id === n.place);
+          return h_flex().id(`mw-${src.id}-${i}`).gap(10).text_size(11).cursor_pointer().hover((e) => e.bg(t.hover))
+            .on_click((_e, cx) => { this.open(src.id, n.chat, cx); this.monitorChat = true; })
+            .child(div().size(6).bg(t.blocked)).child(div().w(70).text_color(t.muted).child(n.task ?? "coordinator"))
+            .child(div().flex_1().min_w(0).truncate().child(n.question?.title ?? n.text ?? "waiting on you"))
+            .child(div().text_color(t.dim).child(String(place?.name ?? "").toUpperCase()));
+        })));
       if (q.length) out.push(v_flex().w_full().px(12).pb(10).gap(2)
         .child(div().text_size(10.5).font_semibold().text_color(t.dim).child(`QUEUE · ${q.length}`))
         .children(q.slice(0, 12).map((k) => h_flex().gap(10).text_size(11)
           .child(div().w(70).text_color(t.muted).child(k.id)).child(div().flex_1().min_w(0).truncate().child(k.name))
-          .child(div().text_color(t.dim).child(k.after?.length ? `AFTER ${k.after.join(", ")}` : String(k.status).toUpperCase())))));
+          .child(div().text_color(t.dim).child((() => { const m = this.startsIn(s, k);
+            const open = (k.after ?? []).filter((a) => { const d = (s.tasks ?? []).find((x) => x.id === String(a).replace(/^.*:/, "")); return d && d.status !== "done"; });
+            return [m == null ? null : m === 0 ? "NEXT" : `STARTS ~${this.dur(m).toUpperCase()}`, open.length ? `AFTER ${open.join(", ")}` : null].filter(Boolean).join(" · ") || String(k.status).toUpperCase(); })())))));
     }
     const top = h_flex().w_full().h(36).flex_none().px(12).gap(16).items_center().bg(t.chrome).border_b(1).border_color(t.accent)
       .child(div().text_color(t.accent).child(crook(14))).child(div().text_size(13).font_semibold().child("OPERATIONS MONITOR"))
