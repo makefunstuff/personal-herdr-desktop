@@ -55,8 +55,8 @@ tables, todos. `herdr-doc new|check|export|list`; a Claude Code skill tells agen
 **Shepherdr 3.0 patches** (`herdr-app/shepherdr-patches`, applied by the installer when Shepherdr 3.0.0's mods are
 there): its views follow the px layouts' look (square corners, the theme's status colours, capitals on workbench), and
 its chat works with Herdr zoomed (measured sizes converted to the units widths are given in, so the column is centred
-and the newest messages stay in view), shows the agent's reasoning as folded "Thinking" lines, and recovers from a blank
-list without re-laying out every message.
+and the newest messages stay in view), shows the agent's reasoning as folded "Thinking" lines, no longer goes blank while a folded (Show more) reply
+is on screen (a handler the list refuses), and recovers from a blank list without re-laying out every message.
 
 **Sidebar**: AI usage limits (`mods/px-usage`, needs `herdr-usage`) and CPU / GPU / RAM / disk (`mods/px-sysmon`).
 
