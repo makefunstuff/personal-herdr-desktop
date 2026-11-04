@@ -6,7 +6,9 @@
 import * as fs from "fs/promises";
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { exec, theme, shared, setShared, run, spaces, focused, agents, hc, notify, playSound, home } from "herdr";
+import { exec, theme, shared, setShared, run, spaces, focused, agents, hc, notify, playSound, home, window } from "herdr";
+// The desktop's opener for links and files: open on macOS, xdg-open on Linux.
+const OPENER = () => (window()?.platform === "macos" ? "open" : "xdg-open");
 
 const EVERY = 180000;
 const caps = (s) => (shared("layout") === "workbench" ? String(s).toUpperCase() : String(s));
@@ -193,7 +195,7 @@ export default class Reviews extends View {
         .when(kind === "mine" && p.reviewers.length > 0, (e) => e.child(div().min_w(0).truncate().child(p.reviewers.map((r) => `${r.who} ${r.state === "APPROVED" ? "✓" : r.state === "CHANGES_REQUESTED" ? "✗" : "·"}`).join("  "))))
         .child(div().flex_1())
         .when(kind !== "mine", (e) => e.child(this.link(t, `rv-${p.url}`, "Review", (cx) => this.review(p, cx), true)))
-        .child(this.link(t, `op-${p.url}`, "GitHub", () => exec("xdg-open", [p.url]).catch(() => {}))));
+        .child(this.link(t, `op-${p.url}`, "GitHub", () => exec(OPENER(), [p.url]).catch(() => {}))));
   }
 
   render(cx) {

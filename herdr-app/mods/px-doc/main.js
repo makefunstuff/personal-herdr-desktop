@@ -5,7 +5,9 @@
 import * as fs from "fs/promises";
 import { View, div, image } from "gpui-kit";
 import { v_flex, h_flex, TextView } from "gpui-base";
-import { theme, shared, home, props, run, exec, settings, watchFolder, notify } from "herdr";
+import { theme, shared, home, props, run, exec, settings, watchFolder, notify, window } from "herdr";
+// The desktop's opener for links and files: open on macOS, xdg-open on Linux.
+const OPENER = () => (window()?.platform === "macos" ? "open" : "xdg-open");
 
 const caps = (s) => (shared("layout") === "workbench" ? String(s).toUpperCase() : String(s));
 const alpha = (c, a) => `${String(c ?? "#000000").slice(0, 7)}${a}`;
@@ -178,7 +180,7 @@ export default class Doc extends View {
       }
       case "links": return h_flex().w_full().gap(6).flex_wrap().children((b.items ?? []).map((x, i) => div().id(`ln-${key}-${i}`).h(22).px(8).flex().items_center()
         .border_1().border_color(t.border).text_size(11).text_color(t.accent).cursor_pointer().hover((s) => s.border_color(t.accent))
-        .on_click(() => exec("xdg-open", [x.url]).catch(() => {})).child(x.label || x.url)));
+        .on_click(() => exec(OPENER(), [x.url]).catch(() => {})).child(x.label || x.url)));
       case "image": return v_flex().w_full().gap(3)
         .child(image(b.path).w(b.width ?? 420))
         .when(Boolean(b.caption), (e) => e.child(div().text_size(10.5).text_color(t.dim).child(b.caption)));

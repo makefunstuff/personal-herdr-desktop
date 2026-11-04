@@ -8,7 +8,9 @@
 import * as fs from "fs/promises";
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, TextView, TextareaState, Textarea } from "gpui-base";
-import { spaces, panes, focused, exec, theme, settings, shared, setShared, agents, hc, notify, props, home, appHome, run } from "herdr";
+import { spaces, panes, focused, exec, theme, settings, shared, setShared, agents, hc, notify, props, home, appHome, run, window } from "herdr";
+// The desktop's opener for links and files: open on macOS, xdg-open on Linux.
+const OPENER = () => (window()?.platform === "macos" ? "open" : "xdg-open");
 
 const EVERY = 60000;
 const REACTIONS = [["+1", "👍"], ["-1", "👎"], ["heart", "❤️"], ["hooray", "🎉"], ["confused", "😕"], ["eyes", "👀"], ["rocket", "🚀"], ["laugh", "😄"]];
@@ -373,7 +375,7 @@ export default class PullRequest extends View {
         .when(Boolean(state), (el) => el.child(div().px(4).border_1().border_color(tone).text_size(9.5).font_semibold().text_color(tone)
           .child(caps(state === "CHANGES_REQUESTED" ? "requested changes" : state === "APPROVED" ? "approved" : "reviewed"))))
         .child(div().id(`gh-${id}`).text_color(t.dim).cursor_pointer().hover((s) => s.text_color(t.accent))
-          .on_click(() => exec("xdg-open", [c.html_url]).catch(() => {})).child(ago(c.created_at ?? c.submitted_at)))
+          .on_click(() => exec(OPENER(), [c.html_url]).catch(() => {})).child(ago(c.created_at ?? c.submitted_at)))
         .child(div().flex_1())
         .when(kind !== "review-body" && !has, (el) => el.child(this.link(t, `re-${id}-add`, "React", (cx) => { this.picking = id; cx.notify(); })))
         .child(this.link(t, `ask-${id}`, "Ask", (cx) => this.ask(who, c, hunk, cx))))
@@ -425,7 +427,7 @@ export default class PullRequest extends View {
     if (!cs.length) { body.child(div().pt(12).text_size(12).text_color(t.dim).child("No checks on the latest commit.")); return; }
     body.child(v_flex().w_full().mt(10).border_1().border_color(t.border).bg(t.chrome).children(cs.map(({ c, k }, i) =>
       h_flex().id(`ck-${i}`).w_full().h(24).px(8).gap(8).items_center().border_b(1).border_color(t.border).cursor_pointer().hover((s) => s.bg(t.hover))
-        .on_click(() => c.url && exec("xdg-open", [c.url]).catch(() => {}))
+        .on_click(() => c.url && exec(OPENER(), [c.url]).catch(() => {}))
         .child(div().w(8).h(8).flex_none().bg(k[1]))
         .child(div().flex_1().min_w(0).truncate().text_size(11.5).text_color(k[0] === "skip" ? t.dim : t.foreground).child(c.name ?? "?"))
         .child(div().text_size(10).font_semibold().text_color(k[1]).child(caps(k[0] === "ok" ? "passed" : k[0] === "fail" ? String(c.conclusion ?? c.state).toLowerCase().replace(/_/g, " ") : k[0] === "run" ? "running" : "skipped"))))));
@@ -487,7 +489,7 @@ export default class PullRequest extends View {
       .when(!d, (el) => el.child(div().flex_1().font_semibold().child(caps("Pull request"))))
       .when(Boolean(d), (el) => el
         .child(div().id("pr-link").h(22).px(7).flex().items_center().flex_none().bg(t.accent).text_color(t.accent_foreground).text_size(11).font_semibold()
-          .cursor_pointer().on_click(() => exec("xdg-open", [d.pr.url]).catch(() => {})).child(`#${d.pr.number}`))
+          .cursor_pointer().on_click(() => exec(OPENER(), [d.pr.url]).catch(() => {})).child(`#${d.pr.number}`))
         .child(div().flex_1().min_w(0).truncate().text_size(12.5).font_semibold().text_color(t.foreground).child(d.pr.title)))
       .child(div().id("pr-refresh").h(22).w(26).flex().items_center().justify_center().flex_none().border_1().border_color(t.border)
         .text_size(12).text_color(this.loading ? t.accent : t.dim).cursor_pointer().hover((s) => s.text_color(t.accent).border_color(t.accent))
