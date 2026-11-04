@@ -601,7 +601,11 @@ func (d *Daemon) sendTurnWith(gen int, pcm []byte, typed string, released time.T
 	fast, isFast := intent.Match(text, card != nil)
 	d.mu.Unlock()
 	if err == nil && isFast && !d.fastResolves(ctx, fast) {
-		isFast = false // "tell me a joke", "open spotify": no agent or space by that name, so the brain hears it
+		if app, ok := asApp(fast); ok {
+			fast = app // "open firefox": no space or agent by that name, but an app
+		} else {
+			isFast = false // "tell me a joke": no agent, space or app by that name, so the brain hears it
+		}
 	}
 	d.mu.Lock()
 	if gen != d.gen {

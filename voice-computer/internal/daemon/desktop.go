@@ -159,3 +159,38 @@ func (d *Daemon) planOpenApp(c intent.Call) *action {
 		return "Opened " + app + ".", []Done{{Text: "Opened " + app}}, nil
 	}}.act("Open "+app, "", "Open")
 }
+
+// installedApp is the Mac app a spoken name means ("firefox", "activity monitor"), from the app folders,
+// or "" when none is installed by that name.
+func installedApp(spoken string) string {
+	want := strings.ReplaceAll(strings.ToLower(strings.TrimSpace(spoken)), " ", "")
+	if want == "" {
+		return ""
+	}
+	home, _ := os.UserHomeDir()
+	for _, dir := range []string{"/Applications", filepath.Join(home, "Applications"), "/System/Applications", "/System/Applications/Utilities", "/Applications/Utilities"} {
+		entries, _ := os.ReadDir(dir)
+		for _, e := range entries {
+			name, ok := strings.CutSuffix(e.Name(), ".app")
+			if ok && strings.ReplaceAll(strings.ToLower(name), " ", "") == want {
+				return name
+			}
+		}
+	}
+	return ""
+}
+
+// asApp turns "open X" / "go to X", when X is no space or agent but an installed app, into open_app.
+func asApp(f intent.Fast) (intent.Fast, bool) {
+	if f.Kind != "tool" || (f.Call.Name != "focus" && f.Call.Name != "go_to_space") {
+		return f, false
+	}
+	name := f.Call.Str("name")
+	if name == "" {
+		name = f.Call.Str("space")
+	}
+	if app := installedApp(name); app != "" {
+		return intent.Fast{Kind: "tool", Call: intent.Call{Name: "open_app", Args: map[string]any{"app": app}}}, true
+	}
+	return f, false
+}
