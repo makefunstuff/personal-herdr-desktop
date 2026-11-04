@@ -600,6 +600,9 @@ func (d *Daemon) sendTurnWith(gen int, pcm []byte, typed string, released time.T
 	_, card := d.openCardLocked()
 	fast, isFast := intent.Match(text, card != nil)
 	d.mu.Unlock()
+	if isFast && fast.Kind == "math" && !d.localBrain() {
+		isFast = false // a capable brain does sums; only the small local one is kept from them
+	}
 	if err == nil && isFast && !d.fastResolves(ctx, fast) {
 		if app, ok := asApp(fast); ok {
 			fast = app // "open firefox": no space or agent by that name, but an app
@@ -1545,4 +1548,10 @@ func ComputerSession(cfg config.Config) voice.SessionConfig {
 		TurnDetection: nil, MaxOutputTokens: cfg.MaxOutputTokens, MaxSentences: cfg.MaxSentences, ContextTokens: cfg.ContextTokens,
 		Rewrite: Humanize,
 	}
+}
+
+// localBrain says whether the brain runs on this Mac (the small model, kept from sums and guesses).
+func (d *Daemon) localBrain() bool {
+	u := d.cfg.Chat.URL
+	return strings.Contains(u, "127.0.0.1") || strings.Contains(u, "localhost")
 }

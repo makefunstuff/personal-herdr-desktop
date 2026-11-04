@@ -22,13 +22,14 @@ import (
 type Client struct {
 	Backend             string
 	STT, Chat, TTS      config.Endpoint
+	ChatFallback        config.Endpoint // the brain's second choice (the local one)
 	ChatExtra, TTSExtra map[string]any
 	HTTP                *http.Client
 }
 
 // New is the client for cfg's backend.
 func New(cfg config.Config) *Client {
-	return &Client{Backend: cfg.Backend, STT: cfg.STT, Chat: cfg.Chat, TTS: cfg.TTS,
+	return &Client{Backend: cfg.Backend, STT: cfg.STT, Chat: cfg.Chat, ChatFallback: cfg.ChatFallback, TTS: cfg.TTS,
 		ChatExtra: cfg.ChatExtra, TTSExtra: cfg.TTSExtra}
 }
 
@@ -210,7 +211,14 @@ func (w *wavBody) Read(p []byte) (int, error) {
 
 // Post sends a JSON body to ep and returns the answer (a plain, non-streamed request).
 func (c *Client) Post(ctx context.Context, ep config.Endpoint, path string, body io.Reader) ([]byte, error) {
-	resp, err := c.do(ctx, ep, "POST", path, body, "application/json", true)
+	var resp *http.Response
+	var err error
+	if ep == c.Chat {
+		data, _ := io.ReadAll(body)
+		resp, err = c.ChatDo(ctx, path, data, "application/json")
+	} else {
+		resp, err = c.do(ctx, ep, "POST", path, body, "application/json", true)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -235,3 +243,27 @@ func WAV(pcm []byte, rate int) []byte {
 
 // Timeout is how long a plain request may take.
 const Timeout = 10 * time.Second
+
+// ChatDo POSTs a brain request to Chat, and when Chat can't be reached or errs (not when the request was
+// cancelled), the same request to ChatFallback with its model.
+func (c *Client) ChatDo(ctx context.Context, path string, data []byte, ctype string) (*http.Response, error) {
+	resp, err := c.do(ctx, c.Chat, "POST", path, bytes.NewReader(data), ctype, true)
+	if err == nil || ctx.Err() != nil || c.ChatFallback.URL == "" || c.ChatFallback.URL == c.Chat.URL {
+		return resp, err
+	}
+	return c.do(ctx, c.ChatFallback, "POST", path, bytes.NewReader(withModel(data, c.ChatFallback.Model)), ctype, true)
+}
+
+// withModel is a JSON request with its "model" set to model.
+func withModel(data []byte, model string) []byte {
+	var m map[string]any
+	if model == "" || json.Unmarshal(data, &m) != nil {
+		return data
+	}
+	m["model"] = model
+	out, err := json.Marshal(m)
+	if err != nil {
+		return data
+	}
+	return out
+}

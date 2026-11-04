@@ -213,7 +213,7 @@ func (p *pipeline) respond(ctx context.Context, id string, msgs []map[string]any
 		body[k] = v
 	}
 	data, _ := json.Marshal(body)
-	resp, err := p.c.do(ctx, p.c.Chat, "POST", "/v1/chat/completions", bytes.NewReader(data), "application/json", true)
+	resp, err := p.c.ChatDo(ctx, "/v1/chat/completions", data, "application/json")
 	if err != nil {
 		if ctx.Err() == nil {
 			p.fail(err)

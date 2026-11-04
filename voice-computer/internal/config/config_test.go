@@ -39,15 +39,14 @@ func TestLoad(t *testing.T) {
 	}
 }
 
-// The personality: a warm executive assistant, with the original's honesty rules word for word.
+// The personality: a warm executive assistant; facts about the owner only from context, tools and memory.
 func TestInstructionsKeepThePersonality(t *testing.T) {
 	s := Instructions("Herdr", "Alex", ", and that an agent can find out")
 	for _, want := range []string{"You are Herdr, Alex's executive assistant inside Herdr", "warm, sharp and attentive",
 		"personal helper", "two to four natural sentences", "up to five sentences", "at most one per answer", "never invent one", "style notes ask for shorter answers", "Wikipedia says", "call web_search", "never markdown", "one useful next step as a short question", "Use Alex's name now and then",
-		"small local model", "never state a fact, a number, a name or a date from your own knowledge", "never work out a sum",
-		"never guess", "context line", "what you remember from earlier conversations with Alex",
-		"say plainly in one sentence that you don't know, and that an agent can find out", "ask back briefly", "Think briefly",
-		"call remember", "Never remember a password", "I'd only be guessing there, sorry."} {
+		"Honesty comes first, but be useful", "never invent any of those", "context line", "your earlier conversations with Alex",
+		"your own knowledge may be out of date", "give your opinion and advice", "saying when you're unsure",
+		"never say you did something", "ask back briefly", "call remember", "Never remember a password", "Eighty-four."} {
 		if !strings.Contains(s, want) {
 			t.Errorf("instructions lack %q", want)
 		}
