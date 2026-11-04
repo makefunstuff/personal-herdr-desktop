@@ -42,5 +42,6 @@
     "done": "#55ff55",
     "idle": "#aaaaaa",
     "unknown": "#aaaaaa"
-  }
+  },
+  "name": "pixel"
 }

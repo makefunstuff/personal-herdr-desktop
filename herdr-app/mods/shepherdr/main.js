@@ -1,9 +1,9 @@
-// Shepherdr in Herdr desktop: spaces, tasks, Needs you and coordinator/task chats from this Mac's
+// Shepherdr in Herdr desktop: spaces, tasks, Needs you and coordinator/task chats from this computer's
 // Shepherdr (http://127.0.0.1:7787), without the web UI. Open it as a tab: tab.new {mod: "shepherdr"}.
 import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
 import * as fs from "fs/promises";
-import { run, theme, agents, exec, props, shared, appHome, panes, spaces } from "herdr";
+import { run, theme, agents, exec, props, shared, appHome, panes, spaces, home } from "herdr";
 // Show Shepherdr's tab if it's open anywhere, else open it here (same as the status bar's buttons).
 function openShepherdr(view) {
   const name = view === "monitor" ? "Monitor" : "Shepherdr";
@@ -22,10 +22,81 @@ const plain = (md) => String(md ?? "").replace(/^#{1,6}\s+/gm, "").replace(/\*\*
 
 // Each Shepherdr this tab controls. `herdr`: the Herdr machine that shows its agents' terminals.
 // `via`: run curl on that machine through herdr-core (Shepherdr only listens on its own loopback); none: fetch here.
-// The Shepherdrs this panel shows. This Mac's always; others come from ~/.config/herdr-app/shepherdr-sources.json:
+// The Shepherdrs this panel shows. This computer's always; others come from ~/.config/herdr-app/shepherdr-sources.json:
 // [{"id": "gpu", "name": "gpu-box", "herdr": "gpu-shepherdr", "via": "gpu-shepherdr"}]
 // (herdr: the Herdr machine showing its agents; via: the Herdr machine to run curl on, since Shepherdr listens on loopback).
-const SOURCES = [{ id: "mac", name: "This Mac", herdr: "mac-shepherdr", via: null }];
+// The board from before 2.1 was migrated into this computer's Shepherdr on 2026-11-04. To look at its files again
+// read-only, add { id: "legacy", name: "Board before 2.1", herdr: null, via: null, legacy: `${home()}/.shepherdr-legacy` }.
+// Shepherdr 3.0 keeps its tasks in ~/.herdr/tasks/<slug>.json (herdr-task); this panel reads them (read-only) and
+// takes each task's live status from its agent. The full Shepherdr 3.0 window is the "shepherdr" layout.
+const SOURCES = [{ id: "local", name: "This computer", herdr: null, via: null, tasks3: `${home()}/.herdr/tasks` }];
+
+async function tasks3Snapshot(dir) {
+  const files = (await fs.readdir(dir).catch(() => [])).filter((f) => f.endsWith(".json") && !f.startsWith("."));
+  const live = new Map((agents() ?? []).map((a) => [a.address, a]));
+  const places = [], tasks = [];
+  for (const f of files) {
+    let d; try { d = JSON.parse(await fs.readFile(`${dir}/${f}`, "utf8")); } catch { continue; }
+    if (!Array.isArray(d.tasks)) continue;
+    const pid = `t3:${d.slug}`, prefix = d.prefix || "T";
+    places.push({ id: pid, chat: pid, name: d.name, folder: d.folder, status: "idle" });
+    for (const t of d.tasks) {
+      const ag = [...(t.agents ?? [])].reverse().map((a) => live.get(a.address)).find(Boolean);
+      const st = t.state === "done" ? "done" : t.state === "ready" ? "ready" : t.state === "queued" ? "queued" : t.state === "todo" ? "todo"
+        : !ag ? "idle" : ag.status === "blocked" ? "need" : ag.status === "working" ? "work" : ag.status === "done" ? "ready" : "work";
+      tasks.push({ id: `${prefix}-${t.id}`, name: t.title, place: pid, status: st, age: "", archived: t.archived ?? null,
+        agent: { chat: `${prefix}-${t.id}/Agent`, address: ag?.address ?? null }, report: null,
+        worktree: t.worktree, branch: t.branch, desc: t.prompt });
+    }
+    const ks = tasks.filter((k) => k.place === pid && !k.archived);
+    places[places.length - 1].status = ks.some((k) => k.status === "need") ? "need" : ks.some((k) => k.status === "work") ? "work" : "idle";
+  }
+  return { places, tasks, machines: [], asks: {}, needs: [], artifacts: [], tasks3: true };
+}
+
+// ---- read-only view of the legacy (2.0) home: nothing here ever writes to it
+async function readJson(path) { return JSON.parse(await fs.readFile(path, "utf8")); }
+const legacyFile = (key) => `${key.replace(/[:/]/g, "_")}.json`;
+async function legacySnapshot(dir) {
+  const [agents, board, asks] = await Promise.all([readJson(`${dir}/agents.json`), readJson(`${dir}/tasks.json`),
+    readJson(`${dir}/asks.json`).catch(() => ({}))]);
+  const now = Date.now(), ago = (ms) => { const m = Math.round((now - ms) / 60000); return m < 60 ? `${m}m` : m < 1440 ? `${Math.floor(m / 60)}h` : `${Math.floor(m / 1440)}d`; };
+  const places = Object.entries(agents).filter(([k]) => k.startsWith("p:")).map(([k, a]) => ({ id: k, chat: k, name: a.workspace || k.split(":").pop() || "home", status: "idle", folder: a.cwd }));
+  const openAsks = {};
+  const tasks = (board.tasks ?? []).map((t) => {
+    const done = Boolean(t.doneAt || t.closed), stopped = Boolean(t.stopped);
+    const status = done ? "done" : t.told === "need" ? "need" : stopped ? "idle" : t.report?.progress != null ? "work" : "todo";
+    return { id: t.id, name: t.title, place: t.project, status, report: t.report ?? null, age: ago(Number(t.updated || t.created || now)),
+      archived: t.cleaned ? Number(t.cleaned) : null, branch: t.branch, worktree: t.worktree, desc: t.desc, agent: { chat: `${t.id}/Agent` } };
+  });
+  for (const p of places) {
+    const ks = tasks.filter((k) => k.place === p.id && !k.archived);
+    p.status = ks.some((k) => k.status === "need") ? "need" : ks.some((k) => k.status === "work") ? "work" : "idle";
+  }
+  // open questions: the last unanswered question in each chat
+  for (const chat of [...places.map((p) => p.chat), ...tasks.map((k) => k.agent.chat)]) {
+    try {
+      const log = await readJson(`${dir}/chatlog/${legacyFile(chat)}`);
+      const q = [...(log.posted ?? [])].reverse().find((m) => m.question && !(log.answers ?? {})[m.question.id]);
+      if (q) openAsks[chat] = q.question.id;
+    } catch {}
+  }
+  return { places, tasks, machines: [], asks: openAsks, needs: [], artifacts: [], legacy: true };
+}
+async function legacyChat(dir, key) {
+  let log = { posted: [], answers: {} };
+  try { log = await readJson(`${dir}/chatlog/${legacyFile(key)}`); } catch {}
+  const messages = (log.posted ?? []).map((m) => {
+    let text = m.text ?? "";
+    if (m.question) {
+      const answered = (log.answers ?? {})[m.question.id] != null;
+      text = `${m.question.kind ?? "Question"}: ${m.question.title}` + (m.question.choices ?? []).map((c, i) => `\n  ${i + 1}. ${c.label}${c.description ? ` — ${c.description}` : ""}`).join("")
+        + (answered ? "\n(answered)" : "\n(open: answer it in the task's agent terminal)");
+    }
+    return { id: m.id, who: m.who === "you" || m.by === "human" ? "you" : "agent", text, at: m.at };
+  });
+  return { chat: { messages, finished: true } };
+}
 async function loadSources() {
   try {
     const extra = JSON.parse(await fs.readFile(`${appHome()}/shepherdr-sources.json`, "utf8"));
@@ -37,6 +108,24 @@ const STATUS_WORD = { need: "needs you", ready: "ready", merging: "merging", wor
 const OPEN = ["need", "ready", "merging", "work", "queued", "todo"];
 
 async function call(src, path, body) {
+  if (src.tasks3) {
+    if (body !== undefined) throw new Error("Use the Shepherdr layout (Ctrl+Shift+L) to act on tasks");
+    if (path === "snapshot") return tasks3Snapshot(src.tasks3);
+    if (path.startsWith("chat?chat=")) {
+      const key = decodeURIComponent(path.slice(10));
+      const snap = await tasks3Snapshot(src.tasks3), k = snap.tasks.find((x) => x.agent.chat === key);
+      const text = k ? `${k.name}\n\n${k.worktree ? `Worktree: \`${k.worktree}\` (branch ${k.branch})\n\n` : ""}${k.agent.address ? `Its agent is ${k.agent.address}: the task row opens its terminal.` : "No live agent: start it from the Shepherdr layout (Ctrl+Shift+L)."}\n\n${k.desc ?? ""}` : "Open the Shepherdr layout (Ctrl+Shift+L) for this space's Assistant.";
+      return { chat: { messages: [{ id: "t3", who: "agent", text, at: 0 }], finished: true } };
+    }
+    return {};
+  }
+  if (src.legacy) {
+    if (body !== undefined) throw new Error("The board from before 2.1 is read-only here; answer in the task's agent terminal");
+    if (path === "snapshot") return legacySnapshot(src.legacy);
+    if (path.startsWith("chat?chat=")) return legacyChat(src.legacy, decodeURIComponent(path.slice(10)));
+    if (path.startsWith("question") || path.startsWith("artifact")) return {};
+    throw new Error("Not available for the board from before 2.1");
+  }
   const url = `${API}/${path}`;
   if (!src.via) {
     const r = await fetch(url, body === undefined ? undefined : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
@@ -57,6 +146,7 @@ async function call(src, path, body) {
 }
 const get = (src, path) => call(src, path);
 const act = (src, action) => call(src, "action", action);
+const taskChat = (k) => k?.agent?.chat ?? k?.chat ?? (k?.id ? `${k.id}/Agent` : null);
 const oneLine = (s, n = 140) => { const t = String(s ?? "").replace(/\s+/g, " ").trim(); return t.length > n ? t.slice(0, n - 1) + "…" : t; };
 const clock = (ms) => ms ? new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
 
@@ -67,7 +157,7 @@ export default class Shepherdr extends View {
     this.chat = null; this.sending = false; this.note = null; this.mine = new Set(); this.docs = {}; this.view = null;
     this.tick = 0;
     if (props()?.view === "monitor") cx.spawn(async (cx) => { for (;;) { await new Promise((ok) => cx.timer.after(240, ok)); this.tick++; cx.notify(); } });
-    if (props()?.view === "monitor") cx.spawn(async () => { for (;;) { await this.pollMacGpu(); await new Promise((ok) => cx.timer.after(5000, ok)); } });
+    if (props()?.view === "monitor") cx.spawn(async () => { for (;;) { if (this.state.local?.snap) await this.pollMacGpu(); await new Promise((ok) => cx.timer.after(5000, ok)); } });
     this.input = InputState.new({ value: "", placeholder: "Message… (Enter sends)" });
     this.input.on("submit", (_e, cx) => cx.spawn(async (cx) => { await this.send(); cx.notify(); }));
     this.handle = cx.focus_handle();
@@ -109,6 +199,10 @@ export default class Shepherdr extends View {
   }
 
   open(src, key, cx) {
+    // 3.0 tasks: a task with a live agent opens that agent's terminal (its space and tab), like Herdr's agent list.
+    const k = (this.state[src]?.snap?.tasks ?? []).find((x) => x.agent?.chat === key);
+    if (k?.agent?.address) { const a = (agents() ?? []).find((x) => x.address === k.agent.address);
+      if (a) { run("space.select", { id: a.space }); run("tab.select", { id: a.tab }); run("agent.focus", { terminal: a.address }); } }
     this.sel = { src, key }; this.chat = null; this.note = null; this.view = null;
     cx.spawn(async (cx) => {
       await this.loadChat();
@@ -147,7 +241,7 @@ export default class Shepherdr extends View {
     const snap = sel && this.state[sel.src]?.snap; if (!snap) return {};
     const place = snap.places.find((p) => p.chat === sel.key);
     if (place) return { place, label: place.name };
-    const task = snap.tasks.find((t) => t.agent?.chat === sel.key);
+    const task = snap.tasks.find((t) => taskChat(t) === sel.key);
     const tplace = task && snap.places.find((p) => p.id === task.place);
     return { task, place: tplace, label: task ? `${task.id} · ${task.name}` : sel.key };
   }
@@ -156,7 +250,8 @@ export default class Shepherdr extends View {
   terminalFor(sel) {
     const { place, task } = this.whatIs(sel); if (!place) return null;
     const m = this.src(sel.src).herdr;
-    const here = (agents() ?? []).filter((a) => a.address?.startsWith(`${m}/`) && a.space_name === place.name);
+    // herdr null: this computer's own core (addresses without a machine prefix).
+    const here = (agents() ?? []).filter((a) => (m ? a.address?.startsWith(`${m}/`) : !String(a.address ?? "").includes("/")) && a.space_name === place.name);
     if (task) return here.find((a) => (a.tab_name ?? "").includes(task.id) || (a.title ?? "").includes(task.id)) ?? null;
     return here.sort((a, b) => a.tab_index - b.tab_index)[0] ?? null;
   }
@@ -218,7 +313,7 @@ export default class Shepherdr extends View {
     for (const [chat, qid] of Object.entries(snap?.asks ?? {})) {
       if (seen.has(chat)) continue; seen.add(chat);
       const place = (snap.places ?? []).find((p) => p.chat === chat);
-      const task = (snap.tasks ?? []).find((k) => k.agent?.chat === chat);
+      const task = (snap.tasks ?? []).find((k) => taskChat(k) === chat);
       const title = src ? this.askTitle(src, chat, qid) : null;
       out.push({ id: "ask", chat, place: place?.id ?? task?.place, task: task?.id,
         text: title ?? (place ? `${place.name} coordinator asks you something` : "asks you something"), at: 0 });
@@ -248,10 +343,12 @@ export default class Shepherdr extends View {
       .on_click((_e, cx) => this.setFold(`src:${src.id}`, !closed, cx))
       .child(glyph(closed ? "chevron-right" : "chevron-down", 10))
       .child(div().flex_1().min_w(0).truncate().text_size(11).font_semibold().text_color(t.muted).child(src.name.toUpperCase()))
-      .when(Boolean(st.err), (e) => e.child(div().text_size(11).text_color(t.blocked).child(s ? "stale" : "offline")))
+      .when(Boolean(st.err) && Boolean(s || src.via), (e) => e.child(div().text_size(11).text_color(t.blocked).child(s ? "stale" : "offline")))
       .when(needs.length > 0, (e) => e.child(div().px(6).bg(t.blocked).text_color(t.background).text_size(11).font_semibold().child(String(needs.length)))));
     if (closed) return;
-    if (!s) { out.push(div().px(10).py(4).text_size(12).text_color(st.err ? t.blocked : t.dim).child(st.err ? `Can't reach it: ${oneLine(st.err, 90)}` : "Connecting…")); return; }
+    if (!s) { const none = st.err && !src.via;
+      out.push(div().px(10).py(4).text_size(12).text_color(none ? t.dim : st.err ? t.blocked : t.dim)
+        .child(none ? "No Shepherdr running on this computer." : st.err ? `Can't reach it: ${oneLine(st.err, 90)}` : "Connecting…")); return; }
     const last = s.last ?? {}, read = s.read ?? {};
     const unread = (key) => (last[key] ?? 0) > (read[key] ?? read["*"] ?? 0);
     // Needs you first: the one thing to act on.
@@ -271,9 +368,9 @@ export default class Shepherdr extends View {
         ...this.counts(t, s, p)],
         p.status === "idle" ? null : (STATUS_WORD[p.status] ?? p.status)));
       for (const k of tasks) {
-        out.push(this.row(t, `${src.id}-t-${k.id}`, src.id, k.agent?.chat, [this.dot(t, k.status),
+        out.push(this.row(t, `${src.id}-t-${k.id}`, src.id, taskChat(k), [this.dot(t, k.status),
           div().flex_none().text_size(11.5).text_color(t.dim).child(k.id),
-          div().flex_1().min_w(0).truncate().text_size(12.5).when(Boolean(k.agent && unread(k.agent.chat)), (e) => e.font_semibold()).child(k.name)],
+          div().flex_1().min_w(0).truncate().text_size(12.5).when(Boolean(unread(taskChat(k))), (e) => e.font_semibold()).child(k.name)],
           (k.status === "work" || k.status === "merging") ? (this.est(k) ?? STATUS_WORD[k.status])
             : (k.status === "queued" || k.status === "todo") ? (() => { const m = this.startsIn(s, k); return m == null ? STATUS_WORD[k.status] : m === 0 ? "next" : `starts ~${this.dur(m)}`; })()
             : STATUS_WORD[k.status], { indent: 26, h: 24 }));
@@ -359,7 +456,7 @@ export default class Shepherdr extends View {
   async openInBrowser(src, id, v) {
     const s = this.src(src);
     try {
-      if (!s.via) { await exec("open", [`http://127.0.0.1:7787/api/artifacts/${encodeURIComponent(id)}?full=1${v ? `&v=${v}` : ""}`]); return; }
+      if (!s.via) { await exec("xdg-open", [`http://127.0.0.1:7787/api/artifacts/${encodeURIComponent(id)}?full=1${v ? `&v=${v}` : ""}`]); return; }
       // the other machine's Shepherdr only listens there: fetch the page and its data, keep a local copy, open that
       const a = await get(s, `artifacts/${encodeURIComponent(id)}/raw${v ? `?v=${v}` : ""}`);
       const html = String(a?.html ?? "");
@@ -367,7 +464,7 @@ export default class Shepherdr extends View {
       const dir = `${appHome()}/data/shepherdr-artifacts`; await fs.mkdir(dir, { recursive: true });
       const file = `${dir}/${src}-${id}-v${a?.v ?? v ?? 0}.html`;
       await fs.writeFile(file, html.includes("<head>") ? html.replace("<head>", "<head>" + boot) : boot + html);
-      await exec("open", [file]);
+      await exec("xdg-open", [file]);
     } catch (e) { this.note = `Can't open it: ${e.message}`; }
   }
   artifactCard(t, post, full) {
@@ -448,7 +545,7 @@ export default class Shepherdr extends View {
       }
       case "callout": return div().w_full().px(8).py(6).bg(t.background).border_l(3).border_color(tone(b.tone ?? "info")).text_size(12.5).child(S(b.text));
       case "links": return v_flex().gap(2).children((b.items ?? []).map((i, n) => div().id(`lnk-${n}-${S(i.url).slice(0, 40)}`).text_size(12).text_color(t.accent)
-        .cursor_pointer().on_click(() => exec("open", [S(i.url)]).catch(() => {})).child(S(i.label || i.url))));
+        .cursor_pointer().on_click(() => exec("xdg-open", [S(i.url)]).catch(() => {})).child(S(i.label || i.url))));
       default: return null;
     }
   }
@@ -507,7 +604,7 @@ export default class Shepherdr extends View {
           : name === "BACKLOG" ? [startM == null ? null : startM === 0 ? "next" : `starts ~${this.dur(startM)}`, k.after?.length ? `after ${k.after.join(", ")}` : (k.status === "todo" ? "to do" : "queued")].filter(Boolean).join(" · ")
           : this.est(k) ?? k.age ?? "";
         out.push(v_flex().id(`tb-${k.id}`).w_full().px(12).py(4).gap(1).cursor_pointer().hover((e) => e.bg(t.hover))
-          .on_click((_e, cx) => { if (k.agent?.chat) { this.view = null; this.open(sel.src, k.agent.chat, cx); } })
+          .on_click((_e, cx) => { if (taskChat(k)) { this.view = null; this.open(sel.src, taskChat(k), cx); } })
           .child(h_flex().gap(8).items_center()
             .child(div().w(64).flex_none().text_size(11).text_color(old ? t.dim : t.foreground).child(k.id))
             .child(div().flex_1().min_w(0).truncate().text_size(12).text_color(old ? t.muted : t.foreground).child(k.name))
@@ -581,7 +678,7 @@ export default class Shepherdr extends View {
     const c = String(cli ?? "").toLowerCase().includes("codex") ? "codex" : "claude";
     const L = shared("layout");
     const path = L === "workbench" ? `workbench-icons/${c}.svg` : L === "fortress" ? `fortress-icons/${c === "codex" ? "book" : "dwarf"}.svg`
-      : L === "win31" ? (c === "codex" ? "win31-icons/dosapps.png" : "win31-icons/computer.png") : `pixel-icons/${c === "codex" ? "agent" : "claude"}.svg`;
+      : L === "pixel" ? (c === "codex" ? "win31-icons/dosapps.png" : "win31-icons/computer.png") : `pixel-icons/${c === "codex" ? "agent" : "claude"}.svg`;
     return image(path).size(14).flex_none();
   }
   meter(t, m) {
@@ -591,6 +688,28 @@ export default class Shepherdr extends View {
       .child(this.seg(t, (m.pct ?? 0) / 100, 20, c))
       .child(div().w(m.value ? 56 : 34).text_right().text_color(c).child(m.value ?? `${Math.round(m.pct ?? 0)}%`));
   }
+  // A Herdr agent as a Monitor node: its space and tab, status, program; a click shows its terminal.
+  agentNode(t, a) {
+    const col = a.status === "blocked" ? t.blocked : a.status === "working" ? t.working : t.done;
+    const word = ({ blocked: "WAIT", working: "RUN", done: "DONE" })[a.status] ?? String(a.status).toUpperCase();
+    const k = this.tick;
+    const sprite = a.status === "blocked" ? `wait${Math.floor(k / 3) % 2}` : a.status === "working" ? `work${k % 4}` : `ready${Math.floor(k / 4) % 2}`;
+    return v_flex().id(`hnode-${a.address}`).relative().w(320).flex_none().border_1().border_color(t.border).bg(t.chrome)
+      .cursor_pointer().hover((e) => e.bg(t.surface))
+      .on_click(() => { run("space.select", { id: a.space }); run("tab.select", { id: a.tab }); run("agent.focus", { terminal: a.address }); })
+      .child(h_flex().h(24).px(8).gap(8).items_center().border_b(1).border_color(t.border)
+        .child(div().text_size(11).font_semibold().text_color(t.foreground).child(a.address))
+        .child(div().flex_1().truncate().text_size(10).text_color(t.dim).child(String(a.space_name ?? "").toUpperCase()))
+        .child(h_flex().gap(5).items_center().px(5).h(16).border_1().border_color(col)
+          .child(div().size(5).bg(a.status === "working" && this.tick % 4 >= 2 ? t.raised : col))
+          .child(div().text_size(10).font_semibold().text_color(col).child(word))))
+      .child(h_flex().p(8).gap(10).items_center()
+        .child(image(`mods/shepherdr/sprites/${sprite}.svg`).w(40).h(40).flex_none())
+        .child(v_flex().flex_1().min_w(0).gap(3)
+          .child(div().truncate().text_size(12).child(a.tab_name || a.title || "agent"))
+          .child(div().truncate().text_size(10.5).text_color(t.dim).child(`${a.program?.name ?? a.app ?? "agent"} · HERDR`))));
+  }
+
   node(t, src, k) {
     const r = k.report, st = k.status, paused = r?.paused;
     const col = st === "need" || paused ? t.blocked : st === "work" || st === "merging" ? t.working : st === "ready" ? t.done : t.dim;
@@ -604,7 +723,7 @@ export default class Shepherdr extends View {
     return v_flex().id(`node-${src.id}-${k.id}`).relative().w(320).flex_none().border_1().border_color(t.border).bg(t.chrome)
       .cursor_pointer().hover((e) => e.bg(t.surface))
       .child(corner("tl")).child(corner("tr")).child(corner("bl")).child(corner("br"))
-      .on_click((_e, cx) => { if (k.agent?.chat) { this.open(src.id, k.agent.chat, cx); if (props()?.view === "monitor") this.monitorChat = true; } })
+      .on_click((_e, cx) => { if (taskChat(k)) { this.open(src.id, taskChat(k), cx); if (props()?.view === "monitor") this.monitorChat = true; } })
       .child(h_flex().h(24).px(8).gap(8).items_center().border_b(1).border_color(t.border)
         .child(div().text_size(11).font_semibold().text_color(t.foreground).child(k.id))
         .child(div().flex_1().truncate().text_size(10).text_color(t.dim).child(String(this.placeName(src, k.place)).toUpperCase()))
@@ -638,20 +757,33 @@ export default class Shepherdr extends View {
         out.push({ name: `VRAM${n}`, label: `VRAM${n}`, pct, level: pct >= 95 ? "over" : pct >= 80 ? "busy" : "ok" });
       }
     }
-    if (!src.via && this.macGpu) {
-      const g = this.macGpu, memPct = g.total ? (g.used / g.total) * 100 : 0;
-      out.push({ name: "GPU", label: "GPU", pct: g.util, level: g.util >= 90 ? "busy" : "ok" });
-      out.push({ name: "GPU MEM", label: "GPUMEM", pct: memPct, value: `${(g.used / 1e9).toFixed(1)}G`, level: memPct >= 60 ? "busy" : "ok" });
-    }
+    if (!src.via && this.macGpu) this.macGpu.forEach((g, i) => {
+      const n = this.macGpu.length > 1 ? String(i) : "";
+      out.push({ name: `GPU${n}`, label: `GPU${n}`, pct: g.util, level: g.util >= 90 ? "busy" : "ok" });
+    });
     return out;
   }
+  // This computer's GPUs on Linux (no ioreg): busy % per card from the DRM driver's RC6 (idle) residency,
+  // /sys/class/drm/cardN/gt/gt0/rc6_residency_ms, sampled between polls; amdgpu's gpu_busy_percent when present.
   async pollMacGpu() {
     try {
-      if (!this.macRam) this.macRam = Number((await exec("sysctl", ["-n", "hw.memsize"])).stdout.trim()) || 0;
-      const o = String((await exec("ioreg", ["-r", "-d", "1", "-w", "0", "-c", "IOAccelerator"])).stdout);
-      const util = Number(/"Device Utilization %"=(\d+)/.exec(o)?.[1] ?? 0);
-      const used = Number(/"In use system memory"=(\d+)/.exec(o)?.[1] ?? 0);
-      this.macGpu = { util, used, total: this.macRam };
+      const r = await exec("sh", ["-c", 'for c in /sys/class/drm/card[0-9]*; do case "$c" in *-*) continue;; esac; ' +
+        'b=$(cat "$c/device/gpu_busy_percent" 2>/dev/null); r=$(cat "$c/gt/gt0/rc6_residency_ms" 2>/dev/null || cat "$c/power/rc6_residency_ms" 2>/dev/null); ' +
+        'echo "${c##*/} ${b:--} ${r:--} $(date +%s%3N)"; done']);
+      const now = {}, out = [];
+      for (const line of String(r.stdout ?? "").trim().split("\n").filter(Boolean)) {
+        const [card, busy, rc6, at] = line.split(" ");
+        now[card] = { rc6: Number(rc6), at: Number(at) };
+        let util = null;
+        if (busy !== "-") util = Number(busy);
+        else if (rc6 !== "-" && this.gpuPrev?.[card]) {
+          const dt = now[card].at - this.gpuPrev[card].at, idle = now[card].rc6 - this.gpuPrev[card].rc6;
+          if (dt > 0) util = Math.max(0, Math.min(100, 100 - (idle / dt) * 100));
+        }
+        if (util != null) out.push({ card, util });
+      }
+      this.gpuPrev = now;
+      this.macGpu = out.length ? out : null;
     } catch { this.macGpu = null; }
   }
 
@@ -689,7 +821,8 @@ export default class Shepherdr extends View {
       const s = this.state[src.id].snap;
       const head = h_flex().w_full().h(28).px(12).gap(14).items_center().bg(t.chrome).border_b(1).border_t(1).border_color(t.border)
         .child(div().text_size(12).font_semibold().text_color(t.accent).child(`SYS · ${src.name.toUpperCase()}`));
-      if (!s) { out.push(head.child(div().text_size(11).text_color(t.blocked).child(this.state[src.id].err ? "OFFLINE" : "CONNECTING"))); continue; }
+      if (!s) { const none = this.state[src.id].err && !src.via;
+        out.push(head.child(div().text_size(11).text_color(none ? t.dim : t.blocked).child(none ? "NO SHEPHERDR HERE" : this.state[src.id].err ? "OFFLINE" : "CONNECTING"))); continue; }
       out.push(head);
       for (const m of s.machines ?? []) {
         const h = m.health;
@@ -708,7 +841,12 @@ export default class Shepherdr extends View {
       const q = tasks.filter((k) => k.status === "queued" || k.status === "todo");
       run += live.filter((k) => k.status === "work" || k.status === "merging").length;
       wait += this.waiting(s).length; queued += q.length;
-      out.push(live.length ? h_flex().w_full().p(12).gap(12).flex_wrap().children(live.map((k) => this.node(t, src, k)))
+      // Herdr's own agents on this computer (worktree spaces, hand-started agents): the ongoing work outside Shepherdr's tasks.
+      const herdr = src.via ? [] : (agents() ?? []).filter((a) => !String(a.address ?? "").includes("/") && ["working", "blocked", "done"].includes(a.status))
+        .sort((a, b) => ["blocked", "working", "done"].indexOf(a.status) - ["blocked", "working", "done"].indexOf(b.status));
+      run += herdr.filter((a) => a.status === "working").length; wait += herdr.filter((a) => a.status === "blocked").length;
+      out.push(live.length || herdr.length ? h_flex().w_full().p(12).gap(12).flex_wrap()
+          .children(live.map((k) => this.node(t, src, k))).children(herdr.map((a) => this.agentNode(t, a)))
         : div().px(12).py(10).text_size(11).text_color(t.dim).child("NO ACTIVE NODES"));
       const waits = this.waiting(s, src);
       if (waits.length) out.push(v_flex().w_full().px(12).pb(10).gap(2)

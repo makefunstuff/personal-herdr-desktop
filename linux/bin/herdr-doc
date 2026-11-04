@@ -1,0 +1,163 @@
+#!/usr/bin/env python3
+"""herdr-doc: herdr.doc/2 documents that Herdr draws natively (mods/px-doc). Drafts live in ~/.herdr/docs.
+
+  herdr-doc new TITLE [--kind investigation|incident|runbook|design|notes|report] [--slug S]   create, print its path
+  herdr-doc open FILE        show it in Herdr (a pane beside the focused one)
+  herdr-doc check FILE       validate it (format, block types, required fields)
+  herdr-doc export FILE [--out FILE.md]   write Markdown (default: beside it), print the path
+  herdr-doc list             the drafts, newest first
+  herdr-doc guide            the format (SPEC.md)
+"""
+import argparse, datetime, json, os, re, subprocess, sys
+
+HOME = os.path.expanduser("~")
+DIR = os.path.join(HOME, ".herdr", "docs")
+SPEC = os.path.join(HOME, ".config", "herdr-app", "mods", "px-doc", "SPEC.md")
+TYPES = {"heading", "text", "md", "section", "columns", "callout", "quote", "stats", "kv", "list", "todo", "checks", "steps",
+         "timeline", "finding", "evidence", "table", "bars", "progress", "code", "diff", "links", "image", "divider"}
+KINDS = {"investigation": ["Summary", "Scope", "Timeline", "Findings", "Next steps"], "incident": ["Impact", "Timeline", "Root cause", "Actions"],
+         "runbook": ["When to use", "Steps", "Checks", "Rollback"], "design": ["Problem", "Options", "Decision"], "notes": [], "report": ["Summary", "Details"]}
+
+
+def now():
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def path_of(f):
+    f = os.path.expanduser(f)
+    if not os.path.exists(f) and os.path.exists(os.path.join(DIR, f)): f = os.path.join(DIR, f)
+    if not os.path.exists(f) and os.path.exists(os.path.join(DIR, f + ".hdoc.json")): f = os.path.join(DIR, f + ".hdoc.json")
+    return os.path.abspath(f)
+
+
+def cmd_new(a):
+    os.makedirs(DIR, exist_ok=True)
+    slug = a.slug or re.sub(r"[^a-z0-9]+", "-", a.title.lower()).strip("-")[:60] or "draft"
+    p, n = os.path.join(DIR, f"{slug}.hdoc.json"), 2
+    while os.path.exists(p):
+        p = os.path.join(DIR, f"{slug}-{n}.hdoc.json"); n += 1
+    kind = a.kind or "notes"
+    blocks = [{"type": "callout", "tone": "info", "text": "Draft: filling in."}]
+    for h in KINDS.get(kind, []):
+        blocks.append({"type": "heading", "text": h})
+    doc = {"format": "herdr.doc/2", "title": a.title, "kind": kind, "status": "work", "updated": now(), "blocks": blocks}
+    json.dump(doc, open(p, "w"), indent=2)
+    print(p)
+
+
+def problems(doc):
+    out = []
+    if doc.get("format") not in ("herdr.doc/2", "herdr.doc/1"): out.append('format must be "herdr.doc/2"')
+    if not doc.get("title"): out.append("title is missing")
+    def walk(blocks, where):
+        for i, b in enumerate(blocks or []):
+            w = f"{where}[{i}]"
+            t = b.get("type") if isinstance(b, dict) else None
+            if t not in TYPES: out.append(f"{w}: unknown type {t!r}"); continue
+            need = {"heading": ["text"], "text": ["text"], "md": ["text"], "callout": ["text"], "quote": ["text"], "code": ["text"], "diff": ["text"],
+                    "table": ["columns", "rows"], "finding": ["title"], "evidence": ["command", "output"], "image": ["path"], "section": ["blocks"],
+                    "columns": ["columns"], "progress": ["value", "max"]}.get(t, ["items"] if t not in ("divider",) else [])
+            for k in need:
+                if k not in b: out.append(f"{w} ({t}): {k} is missing")
+            if t == "section": walk(b.get("blocks"), w + ".blocks")
+            if t == "columns":
+                for ci, col in enumerate(b.get("columns") or []): walk(col, f"{w}.columns[{ci}]")
+            if t == "finding": walk(b.get("evidence"), w + ".evidence")
+    walk(doc.get("blocks"), "blocks")
+    return out
+
+
+def cmd_check(a):
+    p = path_of(a.file)
+    try: doc = json.load(open(p))
+    except Exception as e: sys.exit(f"{p}: not valid JSON: {e}")
+    ps = problems(doc)
+    if ps: print("\n".join(ps)); sys.exit(1)
+    print(f"ok: {len(doc.get('blocks', []))} blocks")
+
+
+def md_blocks(blocks, depth=2):
+    out = []
+    tone = {"ok": "✅", "warn": "⚠️", "bad": "🛑", "info": "ℹ️"}
+    for b in blocks or []:
+        t = b.get("type")
+        if t == "heading": out.append("#" * min(6, depth + (b.get("level", 2) - 1)) + " " + b.get("text", ""))
+        elif t in ("text", "md"): out.append(b.get("text", ""))
+        elif t == "callout": out.append("> " + tone.get(b.get("tone", "info"), "") + (f" **{b['title']}** " if b.get("title") else " ") + b.get("text", "").replace("\n", "\n> "))
+        elif t == "quote": out.append("> " + b.get("text", "").replace("\n", "\n> ") + (f"\n> — {', '.join(x for x in (b.get('who'), b.get('where')) if x)}" if b.get("who") or b.get("where") else ""))
+        elif t == "stats": out.append(" · ".join(f"**{s.get('label')}**: {s.get('value')}" + (f" ({s['note']})" if s.get("note") else "") for s in b.get("items", [])))
+        elif t == "kv": out.append("\n".join(f"- **{k}**: {v}" for k, v in b.get("items", [])))
+        elif t == "list": out.append("\n".join((f"{i + 1}. " if b.get("style") == "number" else "- ") + str(x) for i, x in enumerate(b.get("items", []))))
+        elif t == "todo": out.append("\n".join(f"- [{'x' if x.get('done') else ' '}] {x.get('text')}" + (f" ({x['who']})" if x.get("who") else "") for x in b.get("items", [])))
+        elif t == "checks": out.append("\n".join(f"- {'✅' if x.get('ok') is True else '❌' if x.get('ok') is False else '➖'} {x.get('text')}" + (f" — {x['note']}" if x.get("note") else "") for x in b.get("items", [])))
+        elif t == "steps": out.append("\n".join(f"{i + 1}. {'~~' if x.get('state') == 'skip' else ''}{x.get('text')}{'~~' if x.get('state') == 'skip' else ''} ({x.get('state', 'todo')})" for i, x in enumerate(b.get("items", []))))
+        elif t == "timeline": out.append("| time | what |\n|---|---|\n" + "\n".join(f"| {x.get('time', '')} | {x.get('text', '')}{' (' + x['who'] + ')' if x.get('who') else ''} |" for x in b.get("items", [])))
+        elif t == "finding":
+            out.append(f"**[{str(b.get('severity', '')).upper()}] {b.get('title', '')}**")
+            if b.get("detail"): out.append(b["detail"])
+            if b.get("evidence"): out.append(md_blocks(b["evidence"], depth + 1))
+            if b.get("fix"): out.append(f"**Fix:** {b['fix']}")
+        elif t == "evidence": out.append((f"_{b['where']}_\n" if b.get("where") else "") + f"```console\n$ {b.get('command', '')}\n{b.get('output', '')}\n```")
+        elif t == "code": out.append((f"`{b['file']}`\n" if b.get("file") else "") + f"```{b.get('lang', '')}\n{b.get('text', '')}\n```")
+        elif t == "diff": out.append((f"`{b['file']}`\n" if b.get("file") else "") + f"```diff\n{b.get('text', '')}\n```")
+        elif t == "table":
+            cols = b.get("columns", [])
+            out.append("| " + " | ".join(map(str, cols)) + " |\n|" + "|".join("---" for _ in cols) + "|\n" + "\n".join("| " + " | ".join(str(v) for v in r) + " |" for r in b.get("rows", [])))
+        elif t == "bars": out.append("\n".join(f"- {x.get('label')}: {x.get('value')}{' ' + b['unit'] if b.get('unit') else ''}" for x in b.get("items", [])))
+        elif t == "progress": out.append(f"{b.get('label', '')}: {b.get('value')}/{b.get('max')}")
+        elif t == "links": out.append("\n".join(f"- [{x.get('label') or x.get('url')}]({x.get('url')})" for x in b.get("items", [])))
+        elif t == "image": out.append(f"![{b.get('caption', '')}]({b.get('path', '')})")
+        elif t == "divider": out.append("---")
+        elif t == "section":
+            out.append("#" * min(6, depth) + " " + b.get("title", ""))
+            if b.get("intro"): out.append(b["intro"])
+            out.append(md_blocks(b.get("blocks"), depth + 1))
+        elif t == "columns":
+            for col in b.get("columns", []): out.append(md_blocks(col, depth))
+    return "\n\n".join(x for x in out if x)
+
+
+def cmd_export(a):
+    p = path_of(a.file); doc = json.load(open(p))
+    head = f"# {doc.get('title', 'Untitled')}\n\n" + (f"_{doc['subtitle']}_\n\n" if doc.get("subtitle") else "") + \
+        (f"**{doc.get('kind', '')}** · status: {doc['status']}\n\n" if doc.get("status") else "")
+    out = a.out or re.sub(r"\.hdoc\.json$|\.json$", "", p) + ".md"
+    open(out, "w").write(head + md_blocks(doc.get("blocks")) + "\n")
+    print(out)
+
+
+def cmd_open(a):
+    p = path_of(a.file)
+    if not os.path.exists(p): sys.exit(f"No such document: {p}")
+    r = subprocess.run(["herdr-app", "do", "pane.split", "--direction", "right", "--mod", "px-doc", "--props", json.dumps({"file": p})], capture_output=True, text=True)
+    print(r.stdout.strip() or r.stderr.strip())
+    sys.exit(r.returncode)
+
+
+def cmd_list(_a):
+    os.makedirs(DIR, exist_ok=True)
+    rows = []
+    for n in os.listdir(DIR):
+        if not n.endswith(".hdoc.json"): continue
+        p = os.path.join(DIR, n)
+        try: d = json.load(open(p))
+        except Exception: d = {"title": n, "status": "broken"}
+        rows.append((os.path.getmtime(p), p, d.get("kind", ""), d.get("status", ""), d.get("title", n)))
+    for m, p, k, s, t in sorted(rows, reverse=True):
+        print(f"{datetime.datetime.fromtimestamp(m):%Y-%m-%d %H:%M}  {s:6} {k:13} {t}\n    {p}")
+
+
+def main():
+    ap = argparse.ArgumentParser(prog="herdr-doc", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    c = sub.add_parser("new"); c.add_argument("title"); c.add_argument("--kind", choices=list(KINDS)); c.add_argument("--slug"); c.set_defaults(fn=cmd_new)
+    c = sub.add_parser("open"); c.add_argument("file"); c.set_defaults(fn=cmd_open)
+    c = sub.add_parser("check"); c.add_argument("file"); c.set_defaults(fn=cmd_check)
+    c = sub.add_parser("export"); c.add_argument("file"); c.add_argument("--out"); c.set_defaults(fn=cmd_export)
+    c = sub.add_parser("list"); c.set_defaults(fn=cmd_list)
+    c = sub.add_parser("guide"); c.set_defaults(fn=lambda _a: print(open(SPEC).read()))
+    a = ap.parse_args(); a.fn(a)
+
+
+if __name__ == "__main__":
+    main()

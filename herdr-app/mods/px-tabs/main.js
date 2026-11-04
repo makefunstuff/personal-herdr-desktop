@@ -2,18 +2,6 @@ import { View, div, svg, image } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { spaces, panes, run, openOverlay, theme, window, shared, layout, settings } from "herdr";
 const GS = () => ({ workbench: "gw", fortress: "gf" })[shared("layout")] ?? "g";
-// >>> voice (herdr-voice-computer): the mic button. Click: talk (again: send); right-click: the voice window.
-const voiceMic = (t) => {
-  const v = shared("voice") ?? { state: "off" };
-  const c = ({ off: t.dim, ready: v.quiet ? t.dim : t.muted, listening: t.accent, thinking: t.working, speaking: t.done, confirm: t.blocked })[v.state] ?? t.dim;
-  return div().id("voice-mic").size(26).flex_none().flex().items_center().justify_center().cursor_pointer().relative()
-    .text_color(c).when(v.state === "listening" || v.state === "confirm", (e) => e.bg(t.selected)).hover((s) => s.bg(t.hover))
-    .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click(() => run("voice.talk"))
-    .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); run("voice.overlay"); })
-    .child(svg(`mods/px-tabs/${GS()}/mic.svg`).size(15))
-    .when(v.inbox > 0, (e) => e.child(div().absolute().top(3).right(3).size(5).bg(t.blocked)));
-};
-// <<< voice
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -94,7 +82,9 @@ export default class Tabs extends View {
       ? Math.max(10, (root.traffic_lights[0] + 64) / settings().zoom - (sidebar?.hidden ? 0 : sidebar?.size?.px ?? 0))
       : 10;
     const panel = find(root, "panel"), body = find(root, "panel-body");
-    const enabled = shared("workspace.panels") ?? ["files", "changes"];
+    // The welcome's "workspace.panels" picks Files/Changes; the Jira panel is always on where the layout has one.
+    const picked = shared("workspace.panels") ?? ["files", "changes"];
+    const enabled = picked.includes("jira") || !findNode(layout(), "jira") ? picked : [...picked, "jira"];
     this.syncPanel(space, panel, body, enabled);
     const panelButton = (id, label, icon) => {
       const on = panel && !panel.hidden && body?.active === id;
@@ -115,12 +105,19 @@ export default class Tabs extends View {
           .text_color(shown ? t.accent : t.dim).when(shown, e => e.bg(t.selected)).hover(st => st.bg(t.hover).text_color(t.foreground))
           .on_click(() => run("layout.toggle", { id: "shepherdr" }))
           .child(svg(`mods/px-tabs/${GS()}/shepherdr.svg`).size(15))); })
-      // >>> voice (herdr-voice-computer)
-      .child(voiceMic(t))
-      // <<< voice
       .child(button("tab-new", "+", () => openOverlay({ frame: "none", mod: "px-new-menu", kind: "popup", width: 250, height: 512 })))
       .when(enabled.includes("files"), el => el.child(panelButton("files", "Files", `mods/px-files/${GS()}/file.svg`)))
       .when(enabled.includes("changes"), el => el.child(panelButton("changes", "Changes", `mods/px-changes/${GS()}/changes.svg`)))
+      .when(Boolean(findNode(layout(), "pr")), el => el.child(panelButton("pr", "PR", "mods/task-pr/git-pull-request.svg")))
+      .when(Boolean(findNode(layout(), "reviews")), el => el.child(panelButton("reviews", (shared("reviews.summary")?.requested ?? 0) > 0 ? `Reviews ${shared("reviews.summary").requested}` : "Reviews", `mods/px-chrome/${GS()}/check.svg`)))
+      .when(Boolean(findNode(layout(), "gcp")), el => el.child(panelButton("gcp", "GCP", `mods/px-chrome/${GS()}/server.svg`)))
+      .when(Boolean(findNode(layout(), "stacks")), el => el.child(panelButton("stacks", "Stacks", `mods/px-chrome/${GS()}/layers.svg`)))
+      .when(Boolean(findNode(layout(), "docs")), el => el.child(panelButton("docs", "Docs", `mods/px-chrome/${GS()}/file-text.svg`)))
+      .when(Boolean(findNode(layout(), "time")), el => el.child(panelButton("time", "Time", `mods/px-chrome/${GS()}/clock.svg`)))
+      .when(enabled.includes("jira"), el => el.child(panelButton("jira", "Jira", "mods/px-jira/g/jira.svg")))
+      // Shepherdr 3.0's panels, where this layout has them (its tasks and artifacts stacks)
+      .when(Boolean(findNode(layout(), "tasks")), el => el.child(panelButton("tasks", "Tasks", `mods/px-chrome/${GS()}/circle-check.svg`)))
+      .when(Boolean(findNode(layout(), "artifacts")), el => el.child(panelButton("artifacts", "Artifacts", `mods/px-chrome/${GS()}/layers.svg`)))
       .when(w?.buttons, el => el.child(button("minimize", w.platform === "windows" ? svg(`mods/px-tabs/${GS()}/win-min.svg`).size(16) : "−", () => run("window.minimize")))
         .child(button("maximize", w.platform === "windows" ? svg(`mods/px-tabs/${GS()}/${w.maximized ? "win-restore" : "win-max"}.svg`).size(16) : "□", () => run("window.maximize")))
         .child(button("close-window", w.platform === "windows" ? svg(`mods/px-tabs/${GS()}/win-close.svg`).size(16) : svg(`mods/px-pane/${GS()}/close.svg`).size(13), () => run("window.close"))));

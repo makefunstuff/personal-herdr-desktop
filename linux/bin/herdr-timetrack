@@ -1,0 +1,75 @@
+#!/usr/bin/env python3
+"""herdr-timetrack: where the person's time goes, sampled every 30 s, kept on this machine only.
+
+Each sample: the focused window (Hyprland: app class and title), and when it is Herdr, the space and tab shown; idle
+(no pointer movement and the same window for 5 min) and locked (Omarchy's lock) are marked. One JSON line per sample in
+~/.local/share/herdr-timetrack/<YYYY-MM-DD>.jsonl. Read by the Time panel (mods/px-time). Runs as a user service.
+"""
+import json, os, subprocess, sys, time
+
+DIR = os.path.expanduser("~/.local/share/herdr-timetrack")
+EVERY, IDLE_AFTER = 30, 300
+
+
+def out(cmd, timeout=5):
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        return r.stdout if r.returncode == 0 else ""
+    except Exception:
+        return ""
+
+
+def herdr_names():
+    """space id -> name, tab id -> name (asked every few minutes)."""
+    try:
+        d = json.loads(out(["herdr-app", "ls"], 10) or "{}")
+    except ValueError:
+        return {}, {}
+    spaces, tabs = {}, {}
+    for s in d.get("spaces", []):
+        spaces[s.get("id")] = s.get("name")
+        for t in s.get("tabs", []):
+            tabs[t.get("id")] = t.get("name")
+    return spaces, tabs
+
+
+def main():
+    os.makedirs(DIR, exist_ok=True)
+    last_change, last_key, names, names_at = time.time(), None, ({}, {}), 0
+    while True:
+        t0 = time.time()
+        try:
+            w = json.loads(out(["hyprctl", "activewindow", "-j"]) or "{}")
+        except ValueError:
+            w = {}
+        cursor = out(["hyprctl", "cursorpos"]).strip()
+        app, title = w.get("class") or "", (w.get("title") or "")[:200]
+        locked = out(["omarchy-shell", "lock", "isLocked"]).strip() == "true"
+        rec = {"t": int(t0), "app": app, "title": title}
+        if app == "herdr-app":
+            if t0 - names_at > 180:
+                names, names_at = herdr_names(), t0
+            try:
+                st = json.loads(out(["herdr-app", "status"]) or "{}")
+            except ValueError:
+                st = {}
+            rec["space"] = names[0].get(st.get("space")) or st.get("space")
+            rec["tab"] = names[1].get(st.get("tab")) or st.get("tab")
+            rec["layout"] = st.get("layout")
+        key = (app, title, cursor, rec.get("tab"))
+        if key != last_key:
+            last_key, last_change = key, t0
+        if locked:
+            rec["locked"] = True
+        elif t0 - last_change >= IDLE_AFTER:
+            rec["idle"] = True
+        with open(os.path.join(DIR, time.strftime("%Y-%m-%d", time.localtime(t0)) + ".jsonl"), "a") as f:
+            f.write(json.dumps(rec, separators=(",", ":")) + "\n")
+        time.sleep(max(1, EVERY - (time.time() - t0)))
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        sys.exit(0)

@@ -1,0 +1,143 @@
+#!/usr/bin/env python3
+"""Plays key sounds for Herdr Desktop: Cherry MX Blue recordings (Mechvibes' "CherryMX Blue - PBT keycaps" pack,
+MIT, in ~/.local/share/herdr-typing/mxblue), or IBM Model M (bucklespring samples, GPL-2, in .../ms) when chosen.
+
+Hyprland (hypr/herdr-typing.lua) appends one byte per key press to
+$XDG_RUNTIME_DIR/herdr-keys while Herdr is focused: k = key, s = space,
+e = enter, b = backspace. This daemon mixes the matching clicks into one
+low-latency pw-cat stream. Mute: touch ~/.local/state/herdr-typing-muted.
+Sound: HERDR_KEYS_SOUND=mxblue|modelm, or that name in ~/.config/herdr-typing/sound (default mxblue).
+"""
+import array, os, random, subprocess, time, wave
+
+RATE, CHUNK = 44100, 441  # 10 ms
+SOUNDS = os.path.expanduser("~/.local/share/herdr-typing")
+TRIGGER = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "herdr-keys")
+MUTED = os.path.expanduser("~/.local/state/herdr-typing-muted")
+
+
+def wav(path):
+    with wave.open(path) as w:
+        return array.array("h", w.readframes(w.getnframes()))
+
+
+def stroke(code):
+    """Press, then release ~80 ms later, from bucklespring's Model M recordings."""
+    press, rel = wav(f"{SOUNDS}/ms/{code}-0.wav"), wav(f"{SOUNDS}/ms/{code}-1.wav")
+    off = int(RATE * 0.08)
+    out = array.array("h", bytes(2 * (off + len(rel))))
+    for i, x in enumerate(press[:len(out)]):
+        out[i] = x
+    for i, x in enumerate(rel):
+        out[off + i] = max(-32768, min(32767, out[off + i] + int(x * 0.5)))
+    # Two-pole low-pass (~2 kHz) and a 3 ms fade-in for a softer, smoother click.
+    a = 1 - pow(2.718281828, -2 * 3.14159265 * 2000 / RATE)
+    fade = int(RATE * 0.003)
+    y1 = y2 = 0.0
+    res = array.array("h", bytes(2 * len(out)))
+    for i, x in enumerate(out):
+        y1 += a * (x - y1)
+        y2 += a * (y1 - y2)
+        res[i] = max(-32768, min(32767, int(y2 * 0.65 * min(1.0, i / fade))))
+    return res
+
+
+def mx(key):
+    """A Cherry MX Blue press and its release ~85 ms later, as recorded (no filtering: the click is the point)."""
+    press, rel = wav(f"{SOUNDS}/mxblue/{key}-0.wav"), wav(f"{SOUNDS}/mxblue/{key}-1.wav")
+    off = max(len(press), int(RATE * 0.085))
+    out = array.array("h", bytes(2 * (off + len(rel))))
+    for i, x in enumerate(press):
+        out[i] = int(x * 0.8)
+    for i, x in enumerate(rel):
+        out[off + i] = max(-32768, min(32767, out[off + i] + int(x * 0.55)))
+    return lowpass(out, CUTOFF)
+
+
+# Highs rolled off (two-pole low-pass); HERDR_KEYS_CUTOFF=<Hz> to taste, 0 for the raw recording.
+CUTOFF = float(os.environ.get("HERDR_KEYS_CUTOFF", "2800"))
+
+
+def lowpass(x, hz, gain=1.15):
+    if hz <= 0:
+        return x
+    a = 1 - pow(2.718281828, -2 * 3.14159265 * hz / RATE)
+    y1 = y2 = 0.0
+    res = array.array("h", bytes(2 * len(x)))
+    for i, v in enumerate(x):
+        y1 += a * (v - y1)
+        y2 += a * (y1 - y2)
+        res[i] = max(-32768, min(32767, int(y2 * gain)))
+    return res
+
+
+def sound_name():
+    name = os.environ.get("HERDR_KEYS_SOUND")
+    if not name:
+        try:
+            name = open(os.path.expanduser("~/.config/herdr-typing/sound")).read().strip()
+        except OSError:
+            name = ""
+    if name == "modelm" and os.path.exists(f"{SOUNDS}/ms/10-0.wav"):
+        return "modelm"
+    return "mxblue"
+
+
+LETTERS = "10 11 12 13 14 15 16 17 18 19 1e 1f 20 21 22 23 24 25 26 2c 2d 2e 2f 30 31 32".split()
+if sound_name() == "modelm":
+    keys = [stroke(c) for c in LETTERS]
+    bank = {"s": [stroke("39")], "e": [stroke("1c")], "b": [stroke("0e")]}
+else:
+    keys = [mx(f"Key{c}") for c in "ABCDEFGHIJKLMNOPQRSTUVWXYZ"]
+    bank = {"s": [mx("Space")], "e": [mx("Enter")], "b": [mx("Backspace")]}
+
+open(TRIGGER, "ab").close()
+player = subprocess.Popen(
+    ["pw-cat", "--playback", "--raw", "--rate", str(RATE), "--channels", "1",
+     "--format", "s16", "--latency", "20ms", "--media-role", "Notification", "-"],
+    stdin=subprocess.PIPE)
+
+pos = os.path.getsize(TRIGGER)
+voices = []  # [samples, offset]
+silence = array.array("h", bytes(CHUNK * 2))
+muted, muted_check = False, 0.0
+next_t = time.monotonic()
+
+while True:
+    now = time.monotonic()
+    if now - muted_check > 0.5:
+        muted, muted_check = os.path.exists(MUTED), now
+    size = os.path.getsize(TRIGGER)
+    if size < pos:
+        pos = 0
+    if size > pos:
+        with open(TRIGGER, "rb") as f:
+            f.seek(pos)
+            new = f.read(size - pos)
+        pos = size
+        if not muted:
+            for ch in new[-6:].decode(errors="ignore"):
+                voices.append([random.choice(bank.get(ch, keys)), 0])
+        if pos > 1 << 16:
+            open(TRIGGER, "wb").close()
+            pos = 0
+    if voices:
+        out = [0] * CHUNK
+        for v in voices:
+            s, o = v
+            seg = s[o:o + CHUNK]
+            for i, x in enumerate(seg):
+                out[i] += x
+            v[1] += CHUNK
+        voices = [v for v in voices if v[1] < len(v[0])]
+        buf = array.array("h", (max(-32768, min(32767, x)) for x in out))
+    else:
+        buf = silence
+    player.stdin.write(buf.tobytes())
+    player.stdin.flush()
+    next_t += CHUNK / RATE
+    delay = next_t - time.monotonic()
+    if delay > 0:
+        time.sleep(delay)
+    else:
+        next_t = time.monotonic()

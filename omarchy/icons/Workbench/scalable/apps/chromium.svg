@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" shape-rendering="crispEdges">
+<rect x="10" y="10" width="47" height="47" fill="#000000" opacity="0.5"/>
+<rect x="14" y="2" width="5" height="7" fill="#8f9a96"/><rect x="14" y="55" width="5" height="7" fill="#8f9a96"/><rect x="2" y="14" width="7" height="5" fill="#8f9a96"/><rect x="55" y="14" width="7" height="5" fill="#8f9a96"/><rect x="24" y="2" width="5" height="7" fill="#8f9a96"/><rect x="24" y="55" width="5" height="7" fill="#8f9a96"/><rect x="2" y="24" width="7" height="5" fill="#8f9a96"/><rect x="55" y="24" width="7" height="5" fill="#8f9a96"/><rect x="34" y="2" width="5" height="7" fill="#8f9a96"/><rect x="34" y="55" width="5" height="7" fill="#8f9a96"/><rect x="2" y="34" width="7" height="5" fill="#8f9a96"/><rect x="55" y="34" width="7" height="5" fill="#8f9a96"/><rect x="44" y="2" width="5" height="7" fill="#8f9a96"/><rect x="44" y="55" width="5" height="7" fill="#8f9a96"/><rect x="2" y="44" width="7" height="5" fill="#8f9a96"/><rect x="55" y="44" width="7" height="5" fill="#8f9a96"/>
+<rect x="8" y="8" width="48" height="48" fill="#4e5b57"/>
+<rect x="10" y="10" width="44" height="44" fill="#16191b"/>
+<rect x="10" y="10" width="44" height="7" fill="#4aa3d8"/>
+<rect x="13" y="20" width="3" height="3" fill="#4e5b57"/>
+<text x="32" y="39" text-anchor="middle" font-family="JetBrainsMono Nerd Font, JetBrains Mono, monospace" font-weight="700" font-size="17" fill="#4aa3d8">WEB</text>
+<text x="32" y="51" text-anchor="middle" font-family="JetBrainsMono Nerd Font, JetBrains Mono, monospace" font-size="6" fill="#66727a">WB-554</text>
+</svg>

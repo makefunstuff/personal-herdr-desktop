@@ -1,0 +1,32 @@
+# Workbench: the Herdr "workbench" layout's palette (engineering-puzzle console: near-black panels, amber frames, circuit green).
+mode = "dark"
+
+accent = "#ffb000"
+selection = "#23404a"
+muted = "#66727a"
+
+background = "#0d0f10"
+dark_background = "#0a0d0c"
+darker_background = "#090a0b"
+lighter_background = "#1b1f21"
+
+foreground = "#d7dcd9"
+dark_foreground = "#66727a"
+light_foreground = "#c9cfcc"
+bright_foreground = "#ffffff"
+
+red = "#e0574a"
+yellow = "#ffb000"
+orange = "#ff8c1a"
+green = "#7fc46a"
+cyan = "#4fd1c5"
+blue = "#4aa3d8"
+magenta = "#b07ad8"
+brown = "#8a6a2c"
+
+bright_red = "#ff7a6b"
+bright_yellow = "#ffcc4d"
+bright_green = "#a6e08f"
+bright_cyan = "#8be8de"
+bright_blue = "#7fc4f0"
+bright_magenta = "#cfa0f0"

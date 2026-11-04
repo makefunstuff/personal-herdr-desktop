@@ -1,6 +1,15 @@
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, Scrollbar, v_virtual_list } from "gpui-base";
-import { spaces, panes, focused, exec, readTextFile, watchFolder, theme, settings } from "herdr";
+import { spaces, panes, focused, exec, readTextFile, watchFolder, theme, settings, agents, hc, shared, setShared } from "herdr";
+
+// Review comments on diff lines, per repo root, in shared state (they survive reloads and show in every copy).
+const COMMENTS = "changes.comments";
+const allComments = () => shared(COMMENTS) ?? {};
+const commentsFor = (root) => (root ? allComments()[root] ?? [] : []);
+const setCommentsFor = (root, list) => { const all = { ...allComments() }; if (list.length) all[root] = list; else delete all[root]; setShared(COMMENTS, all); };
+// A theme colour with alpha: themes may give #rrggbb or #rrggbbaa, so always rebuild it as #rrggbb + aa.
+const alpha = (c, a) => `${String(c ?? "#000000").slice(0, 7)}${a}`;
+const sameLine = (a, b) => a.path === b.path && a.line === b.line && a.side === b.side;
 
 function location() {
   const space = spaces().find((s) => s.active), f = focused();
@@ -40,6 +49,12 @@ export default class Changes extends View {
     this.input.on("submit", (_e, cx) => this.commit(cx));
     this.input.on("focus", (_e, cx) => { this.typing = true; cx.notify(); });
     this.input.on("blur", (_e, cx) => { this.typing = false; cx.notify(); });
+    // The comment editor for the picked diff line (this.target = {path, line, side, code}).
+    this.target = null;
+    this.comment = InputState.new({ placeholder: "Comment on this line… (Enter adds)" });
+    this.comment.on("submit", (_e, cx) => { this.addComment(); cx.notify(); });
+    this.comment.on("focus", (_e, cx) => { this.commenting = true; cx.notify(); });
+    this.comment.on("blur", (_e, cx) => { this.commenting = false; cx.notify(); });
     this.refresh(cx);
     cx.timer.every(10000, (cx) => this.refresh(cx));
   }
@@ -148,6 +163,65 @@ export default class Changes extends View {
     cx.notify();
   }
 
+  pickLine(row, cx) {
+    if (!this.open || row.number === undefined) return;
+    const t = { path: this.open, line: row.number, side: row.kind === "-" ? "old" : "new", code: row.text.trim().slice(0, 160) };
+    if (this.target && sameLine(this.target, t)) { this.target = null; cx.notify(); return; }
+    this.target = t;
+    const had = commentsFor(this.root).find((c) => sameLine(c, t));
+    this.comment.set_value(had?.text ?? "");
+    this.comment.focus?.();
+    cx.notify();
+  }
+
+  pickFile(path, cx) {
+    const t = { path, line: 0, side: "file", code: "" };
+    if (this.target && sameLine(this.target, t)) { this.target = null; cx.notify(); return; }
+    this.target = t;
+    const had = commentsFor(this.root).find((c) => sameLine(c, t));
+    this.comment.set_value(had?.text ?? "");
+    cx.notify();
+  }
+
+  addComment() {
+    const text = this.comment.value().trim(), t = this.target;
+    if (!t || !this.root) return;
+    const list = commentsFor(this.root).filter((c) => !sameLine(c, t));
+    if (text) list.push({ ...t, text, at: Date.now() });
+    list.sort((a, b) => a.path.localeCompare(b.path) || a.line - b.line);
+    setCommentsFor(this.root, list);
+    this.comment.set_value(""); this.target = null;
+  }
+
+  removeComment(c) { setCommentsFor(this.root, commentsFor(this.root).filter((x) => !sameLine(x, c))); }
+
+  // The agents in this space, the focused tab's first: where the review goes.
+  reviewers() {
+    const space = spaces().find((s) => s.active), tab = focused()?.tab;
+    return agents().filter((a) => a.space === space?.id).sort((a, b) => (b.tab === tab) - (a.tab === tab) || a.tab_index - b.tab_index);
+  }
+
+  sendComments(agent, cx) {
+    const list = commentsFor(this.root);
+    if (!list.length || !agent) return;
+    const lines = list.map((c) => c.side === "file" ? `- ${c.path} (whole file)\n  ${c.text}`
+      : `- ${c.path}:${c.line}${c.side === "old" ? " (removed line)" : ""}${c.code ? ` \`${c.code.replace(/`/g, "'")}\`` : ""}\n  ${c.text}`);
+    const text = `Review comments on the uncommitted changes in ${this.root}:\n\n${lines.join("\n")}\n\nPlease address each one.`;
+    const root = this.root;
+    this.sending = true; this.note = null;
+    cx.spawn(async (cx) => {
+      try {
+        const r = await hc(["send", agent.address, text]);
+        if (r.code && r.code !== 0) throw new Error((r.stderr || r.stdout || "hc send failed").trim());
+        setCommentsFor(root, []);
+        this.note = `Sent ${list.length} comment${list.length === 1 ? "" : "s"} to ${agent.tab_name || agent.address}`;
+        this.noteOk = true;
+      } catch (e) { this.note = `Not sent: ${e.message ?? e}`; this.noteOk = false; }
+      finally { this.sending = false; cx.notify(); }
+    });
+    cx.notify();
+  }
+
   commit(cx) {
     if (!this.message.trim() || !this.root || this.busy || this.loading || this.context !== key()) return;
     const root = this.root, on = this.on, context = this.context, message = this.message.trim();
@@ -165,10 +239,39 @@ export default class Changes extends View {
     cx.notify();
   }
 
-  diffRow({ kind, number, text }, t) {
+  // The diff with each comment as its own row right under the line it is about.
+  shownRows() {
+    const list = commentsFor(this.root).filter((c) => c.path === this.open);
+    if (!list.length) return this.rows;
+    const out = list.filter((c) => c.side === "file").map((c) => ({ kind: "comment", comment: c }));
+    for (const row of this.rows) {
+      out.push(row);
+      if (row.number === undefined) continue;
+      const side = row.kind === "-" ? "old" : "new";
+      for (const c of list) if (c.line === row.number && c.side === side) out.push({ kind: "comment", comment: c });
+    }
+    return out;
+  }
+
+  diffRow(row, t, i) {
+    const { kind, number, text } = row;
+    if (kind === "comment") {
+      const c = row.comment;
+      return h_flex().id(`cmt-${i}`).w_full().h(20).flex_none().gap(8).px(8).items_center().bg(alpha(t.accent, "1f")).border_l(3).border_color(t.accent)
+        .child(div().flex_none().text_color(t.accent).font_semibold().child("▸ REVIEW"))
+        .child(div().flex_1().min_w(0).truncate().text_color(t.foreground).child(c.text))
+        .child(div().id(`cmt-edit-${i}`).flex_none().px(4).text_color(t.dim).cursor_pointer().hover((s) => s.text_color(t.foreground))
+          .on_click((_e, cx) => { this.target = { path: c.path, line: c.line, side: c.side, code: c.code }; this.comment.set_value(c.text); cx.notify(); }).child("edit"))
+        .child(div().id(`cmt-del-${i}`).flex_none().px(4).text_color(t.dim).cursor_pointer().hover((s) => s.text_color(t.blocked))
+          .on_click((_e, cx) => { this.removeComment(c); cx.notify(); }).child("×"));
+    }
     if (kind === "@") return div().w_full().px(12).h(20).flex_none().truncate().bg(t.raised).text_color(t.dim).child(text);
-    return h_flex().w_full().h(20).flex_none().gap(10).when(kind === "+", (e) => e.bg(t.ansi2 + "18")).when(kind === "-", (e) => e.bg(t.ansi1 + "18"))
-      .child(div().w(30).flex_none().text_right().text_color(t.dim).child(number === undefined ? "" : String(number)))
+    const side = kind === "-" ? "old" : "new";
+    const picked = this.target && this.target.path === this.open && this.target.line === number && this.target.side === side;
+    return h_flex().id(`dl-${i}`).w_full().h(20).flex_none().gap(10).when(kind === "+", (e) => e.bg(t.ansi2 + "18")).when(kind === "-", (e) => e.bg(t.ansi1 + "18"))
+      .when(number !== undefined, (e) => e.cursor_pointer().hover((s) => s.bg(t.hover)).on_click((_e, cx) => this.pickLine(row, cx)))
+      .when(Boolean(picked), (e) => e.bg(alpha(t.accent, "33")))
+      .child(div().w(30).flex_none().text_right().text_color(picked ? t.accent : t.dim).child(number === undefined ? "" : String(number)))
       .child(div().flex_1().min_w(0).truncate().child(text));
   }
 
@@ -176,6 +279,8 @@ export default class Changes extends View {
     if (key() !== this.context) this.refresh(cx);
     const t = theme(), add = this.files.reduce((n, f) => n + f.add, 0), del = this.files.reduce((n, f) => n + f.del, 0);
     const enabled = Boolean(this.message.trim() && this.root && !this.busy && !this.loading);
+    const shown = this.shownRows(), comments = commentsFor(this.root), reviewers = comments.length ? this.reviewers() : [];
+    const counts = {}; for (const c of comments) counts[c.path] = (counts[c.path] ?? 0) + 1;
     return v_flex().id("changes").size_full().min_h(0).rounded(0).overflow_hidden().bg(t.surface).border_1().border_color(t.border).text_color(t.foreground).text_size(13).track_focus(this.handle)
       .on_key_down((e, cx) => {
         if (e.key === "escape" && this.typing) { this.typing = false; this.handle.focus(); cx.stop_propagation(); cx.notify(); }
@@ -189,16 +294,41 @@ export default class Changes extends View {
         return h_flex().id(`change-${f.path}`).h(28).flex_none().px(8).gap(8).items_center().rounded(0).cursor_pointer().when(this.open === f.path, (e) => e.bg(t.selected)).hover((s) => s.bg(t.hover)).on_click((_e, cx) => this.pick(f.path, cx))
           .child(div().w(14).text_size(11).text_color(f.status === "A" ? t.ansi2 : f.status === "D" ? t.ansi1 : f.status === "U" ? t.ansi1 : t.blocked).child(f.status))
           .child(h_flex().flex_1().min_w(0).child(div().text_color(t.dim).truncate().child(parts.length ? parts.join("/") + "/" : "")).child(div().max_w(260).min_w(0).truncate().child(name)))
-          .when(f.add > 0, (e) => e.child(div().text_size(11).text_color(t.ansi2).child(`+${f.add}`))).when(f.del > 0, (e) => e.child(div().text_size(11).text_color(t.ansi1).child(`−${f.del}`)));
+          .when(f.add > 0, (e) => e.child(div().text_size(11).text_color(t.ansi2).child(`+${f.add}`))).when(f.del > 0, (e) => e.child(div().text_size(11).text_color(t.ansi1).child(`−${f.del}`)))
+          .when(Boolean(counts[f.path]), (e) => e.child(div().flex_none().px(4).bg(t.accent).text_color(t.accent_foreground).text_size(10).font_semibold().child(`${counts[f.path]}`)))
+          .child(div().id(`fc-${f.path}`).flex_none().px(5).h(20).flex().items_center().border_1().border_color(this.target?.path === f.path && this.target?.side === "file" ? t.accent : t.border)
+            .text_size(10).text_color(t.dim).cursor_pointer().hover((s) => s.text_color(t.accent).border_color(t.accent))
+            .on_click((_e, cx) => { cx.stop_propagation(); this.pickFile(f.path, cx); }).child("comment"));
       })).when(!this.files.length, (e) => e.child(div().p(8).text_color(t.dim).child(this.error || (this.loading ? "Loading changes…" : this.root ? "No uncommitted changes" : "No folder")))))
       .when(this.limited, el => el.child(div().px(12).py(4).text_size(11).text_color(t.dim).child("Showing the first 1,000 changed files")))
       .child(div().flex_1().min_h(0).relative().font_family(settings().font_family ?? "JetBrains Mono").text_size(11)
         .child(div().id("changes-diff-x").size_full().overflow_x_scrollbar()
-          .child(div().w_full().min_w(this.diffWidth).h_full().child(v_virtual_list("changes-diff", this.rows.length, 20, (i) => String(i),
-            (range) => this.rows.slice(range.start, range.end).map((row) => this.diffRow(row, t))).size_full())))
-        .child(Scrollbar.vertical("changes-diff").viewport_from_layout().absolute().inset_0())
+          // A plain scrolling list (not a virtual one): its lines are clickable, to comment on them. Diffs are capped at 1,500 lines.
+          .child(v_flex().id("changes-diff").w_full().min_w(this.diffWidth).h_full().overflow_y_scrollbar()
+            .children(shown.map((row, i) => this.diffRow(row, t, i)))))
         .when(!this.open && this.files.length > 0, (e) => e.child(div().absolute().top(6).px(12).text_color(t.dim).child("Select a file to view its changes"))))
-      .when(Boolean(this.note), (e) => e.child(div().px(10).pb(8).text_size(11).text_color(t.ansi1).child(this.note)))
+      .when(Boolean(this.note), (e) => e.child(div().px(10).pb(8).text_size(11).text_color(this.noteOk ? t.done : t.ansi1).child(this.note)))
+      // Comment editor for the picked line
+      .when(Boolean(this.target), (e) => e.child(v_flex().flex_none().px(10).pt(8).gap(6).border_t(1).border_color(t.border)
+        .child(h_flex().gap(6).text_size(11).text_color(t.dim)
+          .child(div().text_color(t.accent).font_semibold().child("COMMENT"))
+          .child(div().flex_1().min_w(0).truncate().child(this.target.side === "file" ? `${this.target.path} (whole file)` : `${this.target.path}:${this.target.line}${this.target.side === "old" ? " (removed)" : ""}`))
+          .child(div().id("cmt-cancel").cursor_pointer().hover((s) => s.text_color(t.foreground)).on_click((_e, cx) => { this.target = null; cx.notify(); }).child("cancel")))
+        .child(h_flex().gap(8)
+          .child(div().id("comment-input").flex_1().min_w(0).h(30).px(10).flex().items_center().border_1().border_color(this.commenting ? t.accent : t.border).cursor_text()
+            .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).child(Input.new(this.comment).h_full().text_size(12).text_color(t.foreground)))
+          .child(div().id("comment-add").h(30).px(12).flex().items_center().bg(t.accent).text_color(t.accent_foreground).text_size(12).font_semibold().cursor_pointer()
+            .on_click((_e, cx) => { this.addComment(); cx.notify(); }).child("Add")))))
+      // The review so far: send it to an agent in this space, or clear it
+      .when(comments.length > 0, (e) => e.child(h_flex().flex_none().px(10).pt(8).gap(6).items_center().flex_wrap().border_t(1).border_color(t.border).text_size(11)
+        .child(div().text_color(t.accent).font_semibold().child(`${comments.length} COMMENT${comments.length === 1 ? "" : "S"}`))
+        .child(div().flex_1())
+        .when(!reviewers.length, (el) => el.child(div().text_color(t.dim).child("no agent in this space")))
+        .children(reviewers.slice(0, 3).map((a) => div().id(`send-${a.address}`).h(24).px(8).flex().items_center().border_1().border_color(t.accent).text_color(t.accent)
+          .cursor_pointer().hover((s) => s.bg(t.accent).text_color(t.accent_foreground)).on_click((_e, cx) => this.sendComments(a, cx))
+          .child(this.sending ? "Sending…" : `Send to ${a.tab_name || a.program?.name || a.address}`)))
+        .child(div().id("cmt-clear").h(24).px(8).flex().items_center().border_1().border_color(t.border).text_color(t.dim).cursor_pointer()
+          .hover((s) => s.text_color(t.foreground)).on_click((_e, cx) => { setCommentsFor(this.root, []); cx.notify(); }).child("Clear"))))
       .child(h_flex().flex_none().p(10).gap(8).border_t(1).border_color(t.border)
         .child(div().id("commit-message").flex_1().min_w(0).h(32).px(10).flex().items_center().rounded(0).border_1().border_color(this.typing ? t.accent : t.border).cursor_text().on_mouse_down("left", (_e, cx) => cx.stop_propagation()).child(Input.new(this.input).h_full().text_size(12).text_color(t.foreground)))
         .child(div().id("commit").h(32).px(14).flex().items_center().rounded(0).bg(enabled ? t.solid : t.raised).text_color(enabled ? t.solid_foreground : t.dim).text_size(12).when(enabled, (e) => e.cursor_pointer()).on_click((_e, cx) => this.commit(cx)).child(this.busy ? "Committing…" : "Commit")));

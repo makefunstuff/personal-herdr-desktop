@@ -1,0 +1,57 @@
+#!/bin/bash
+# Called with the snake-cased theme name after `omarchy theme set`. Switches the personal pieces that live
+# outside the theme folder: the lock screen view, the mouse cursors and the menu font (hypr/omarchy31.lua
+# reads the theme on reload). The screensaver, login/battery/notification sounds read the theme themselves.
+theme=$1
+lock=$(find "$HOME/.config/omarchy/plugins" -maxdepth 1 -name "*.lock" -type d 2>/dev/null | head -1)
+case $theme in
+workbench) view=workbench cursor=Workbench font="GeistMono Nerd Font" ;;
+win31) view=win31 cursor=Omarchy31 font="Pixelated MS Sans Serif" ;;
+*) view="" cursor="" font="" ;;
+esac
+# The shell caches a QML component by file name, so the chosen view goes in under a name made from its
+# content (ThemeLockView_<hash>.qml) and Service.qml is pointed at it: every change loads a fresh type.
+if [[ -n $view && -f $lock/LockView.$view.qml ]]; then
+  cp "$lock/LockView.$view.qml" "$lock/LockView.qml"
+  name="ThemeLockView_$(sha1sum "$lock/LockView.$view.qml" | cut -c1-10)"
+  if [[ ! -f $lock/$name.qml ]]; then
+    find "$lock" -maxdepth 1 -name 'ThemeLockView_*.qml' -delete
+    cp "$lock/LockView.$view.qml" "$lock/$name.qml"
+    sed -i -E "s/^( *)(LockView|ThemeLockView_[0-9a-f]+) \{/\1$name {/" "$lock/Service.qml"
+    # The lock service is keepLoaded: the shell keeps the running copy until it restarts. Restart it now,
+    # unless the screen is locked (then the new view applies at the next restart/login).
+    restart_shell=1
+  fi
+fi
+# Terminal font (foot, Alacritty, Ghostty): Geist Mono on workbench, the PxPlus pixel font on win31.
+case $theme in
+workbench) "$HOME/.local/share/workbench/term-font" "GeistMono Nerd Font" 13 ;;
+win31) "$HOME/.local/share/workbench/term-font" "PxPlus IBM VGA 8x16" 18 ;;
+esac
+
+# Bar symbols: the workbench dot-matrix glyph font in front of `monospace` on workbench only.
+glyphconf=$HOME/.config/fontconfig/conf.d/60-workbench-glyphs.conf
+if [[ $theme == workbench ]]; then
+  if ! cmp -s "$HOME/.local/share/workbench/60-workbench-glyphs.conf" "$glyphconf"; then
+    mkdir -p "${glyphconf%/*}"; cp "$HOME/.local/share/workbench/60-workbench-glyphs.conf" "$glyphconf"; fc-cache -f >/dev/null 2>&1; restart_shell=1
+  fi
+elif [[ -f $glyphconf ]]; then
+  rm -f "$glyphconf"; fc-cache -f >/dev/null 2>&1; restart_shell=1
+fi
+
+# Apps the session starts later (the shell, menus, launcher) take these from the user manager's environment.
+if [[ -n $font ]]; then
+  systemctl --user set-environment "OMARCHY_MENU_FONT=$font" "XCURSOR_THEME=$cursor" 2>/dev/null
+  dbus-update-activation-environment --systemd "OMARCHY_MENU_FONT=$font" "XCURSOR_THEME=$cursor" 2>/dev/null
+  restart_shell=1
+fi
+if [[ -n $cursor ]]; then
+  hyprctl setcursor "$cursor" 48 >/dev/null 2>&1
+  gsettings set org.gnome.desktop.interface cursor-theme "$cursor" 2>/dev/null
+fi
+hyprctl reload >/dev/null 2>&1
+# The lock service is keepLoaded and the menu font is read at start: restart the shell, unless the screen is locked.
+if [[ -n $restart_shell && $(omarchy-shell lock isLocked 2>/dev/null) != "true" ]]; then
+  (sleep 2; OMARCHY_MENU_FONT="$font" XCURSOR_THEME="$cursor" omarchy restart shell >/dev/null 2>&1) &
+fi
+exit 0

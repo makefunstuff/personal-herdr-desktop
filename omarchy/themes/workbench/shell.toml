@@ -1,0 +1,139 @@
+# Workbench: the Herdr workbench console look for the Omarchy shell (hand-written, not generated):
+# chrome bar, slate square frames, amber title blocks, and an amber selected row with dark text.
+
+[bar]
+background       = "#0a0d0c"
+background-alpha = 1.0
+text             = "#d7dcd9"
+active           = "#ffb000"
+scale-with-font  = true
+size-horizontal  = 28
+size-vertical    = 30
+
+[hyprland]
+active-border            = "#ffb000"
+active-border-foreground = "#4e5b57"
+
+[controls]
+normal-color        = "#d7dcd9"
+normal-fill-alpha   = 0.0
+normal-border       = "#4e5b57"
+normal-border-width = 1
+normal-border-alpha = 1.0
+
+hover-cursor-color        = "#ffb000"
+hover-cursor-fill-alpha   = 0.10
+hover-cursor-border       = "#ffb000"
+hover-cursor-border-width = 1
+hover-cursor-border-alpha = 1.0
+
+focus-color        = "#ffb000"
+focus-fill-alpha   = 0.10
+focus-border       = "#ffb000"
+focus-border-width = 1
+focus-border-alpha = 1.0
+
+selected-color        = "#0d0f10"
+selected-fill-alpha   = 1.0
+selected-border       = "#ffb000"
+selected-border-width = 1
+selected-border-alpha = 1.0
+
+pressed-fill-alpha   = 0.35
+selection-fill-alpha = 0.45
+
+[spacing]
+scale = 1.0
+scale-with-font = true
+
+[font]
+base-size = 12
+
+[popups]
+background       = "#1b1f21"
+background-alpha = 1.0
+text             = "#d7dcd9"
+border           = "#ffb000"
+border-alpha     = 1.0
+border-width     = 2
+
+[tooltip]
+background       = "#22282b"
+background-alpha = 0.98
+text             = "#d7dcd9"
+border           = "#4e5b57"
+border-alpha     = 1.0
+
+[notifications]
+background       = "#1b1f21"
+background-alpha = 1.0
+text             = "#d7dcd9"
+border           = "#ffb000"
+border-alpha     = 1.0
+border-width     = 2
+countdown        = "#ffb000"
+
+[launcher]
+background                = "#1b1f21"
+background-alpha          = 1.0
+text                      = "#d7dcd9"
+border                    = "#ffb000"
+border-alpha              = 1.0
+border-width              = 2
+scrim                     = "#000000"
+scrim-alpha               = 0.55
+selected-background       = "#ffb000"
+selected-background-alpha = 1.0
+selected-text             = "#0d0f10"
+selected-border           = "#ffb000"
+selected-border-alpha     = 1.0
+
+[menu]
+background                = "#1b1f21"
+background-alpha          = 1.0
+text                      = "#d7dcd9"
+border                    = "#ffb000"
+border-alpha              = 1.0
+border-width              = 2
+scrim                     = "#000000"
+scrim-alpha               = 0.55
+selected-background       = "#ffb000"
+selected-background-alpha = 1.0
+selected-text             = "#0d0f10"
+selected-border           = "#ffb000"
+selected-border-alpha     = 1.0
+
+[polkit]
+background       = "#1b1f21"
+background-alpha = 1.0
+text             = "#d7dcd9"
+text-error       = "#e0574a"
+border           = "#ffb000"
+border-error     = "#e0574a"
+border-alpha     = 1.0
+border-width     = 2
+scrim            = "#000000"
+scrim-alpha      = 0.55
+accent           = "#ffb000"
+
+[lock]
+background       = "#1b1f21"
+background-alpha = 0.95
+text             = "#d7dcd9"
+placeholder      = "#66727a"
+text-error       = "#e0574a"
+border           = "#4e5b57"
+border-active    = "#ffb000"
+border-error     = "#e0574a"
+border-alpha     = 1.0
+selection        = "#ffb000"
+selection-alpha  = 0.45
+
+[image-picker]
+scrim                   = "#000000"
+scrim-alpha             = 0.6
+text                    = "#d7dcd9"
+selected-border         = "#ffb000"
+selected-border-alpha   = 1.0
+unselected-border       = "#4e5b57"
+unselected-border-alpha = 0.6

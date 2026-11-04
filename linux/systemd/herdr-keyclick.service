@@ -1,0 +1,11 @@
+[Unit]
+Description=Herdr Desktop typing sounds
+After=pipewire.service
+
+[Service]
+ExecStart=%h/.local/bin/herdr-keyclick
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target

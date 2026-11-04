@@ -1,0 +1,11 @@
+#!/bin/bash
+# term-font FAMILY SIZE: the terminal font for foot, Alacritty and Ghostty (their own configs; called by the theme hook).
+fam=$1 size=${2:-13}
+foot=$HOME/.config/foot/foot.ini ala=$HOME/.config/alacritty/alacritty.toml gho=$HOME/.config/ghostty/config
+[ -f "$foot" ] && sed -i -E "s|^font=.*|font=$fam:size=$size,JetBrainsMono Nerd Font:size=$size|" "$foot"
+[ -f "$ala" ] && sed -i -E "s|^(normal\|bold\|italic) = \{ family = \"[^\"]*\"|\1 = { family = \"$fam\"|" "$ala"
+if [ -f "$gho" ]; then
+  first=$(grep -n '^font-family' "$gho" | head -1 | cut -d: -f1)
+  [ -n "$first" ] && sed -i "${first}s|^font-family = .*|font-family = \"$fam\"|" "$gho"
+fi
+exit 0

@@ -1,10 +1,10 @@
 # personal-herdr-desktop
 
-My customizations for the [Herdr](https://herdr.dev) desktop app on macOS: three themed layouts with their own art,
-icons and sounds, Shepherdr inside Herdr (panel, task board, operations monitor, native artifacts), a Desk with a
-pomodoro timer and notes, and a local voice assistant running on LFM3 models.
-
-Mac only for now. The parts that are macOS-specific are listed under [Porting](#porting) for a later Linux port.
+My customizations for the [Herdr](https://herdr.dev) desktop app on macOS and Linux: three themed layouts with their own
+art, icons and sounds, Shepherdr inside Herdr (panel, task board, operations monitor, native artifacts), pull requests and
+reviews, documents Herdr draws natively, a time tracker, a Desk with a pomodoro timer and notes, and a local voice
+assistant on LFM3 models (macOS). On Linux with [Omarchy](https://omarchy.org) the whole desktop follows the workbench
+look too.
 
 ## What's in it
 
@@ -33,6 +33,36 @@ All art and sounds are original and drawn as vectors, so they stay sharp on Reti
 **Desk** (`mods/desk`, DESK button in the status bar): pomodoro timer with a pixel tomato, focus stats and a 14-day
 chart, today's note with clickable checkboxes; a timer chip in the status bar.
 
+**Pull requests** (`mods/px-pr`, PR in the tab bar): the PR of the branch you're on, or one picked in Reviews, in the
+panel. Description, open threads by file with the code they're on, resolved ones folded, reviews and comments as one
+timeline; react, reply, comment, approve or request changes; FILES shows every diff, click a line to draft a comment and
+submit them as one review; CHECKS lists failing ones first. ASK sends a comment to the agent working on that branch
+(found through Shepherdr 3.0 tasks), or to one agent in a "Chores" space for everything that isn't your own work.
+
+**Reviews** (`mods/px-reviews`): PRs waiting for your review, assigned to you, reviewed by you and your own, from one
+GitHub query; a toast for new requests; REVIEW hands one to the agent for a summary and draft comments.
+
+**Changes** (`mods/px-changes`): the working tree's diff with line and file comments that go to the pane's agent.
+
+**Docs** (`mods/px-doc`, `herdr-doc`): investigation notes, runbooks and drafts as `herdr.doc/2` JSON
+([spec](herdr-app/mods/px-doc/SPEC.md)) drawn natively in the Docs panel: callouts, findings with evidence, timelines,
+tables, todos. `herdr-doc new|check|export|list`; a Claude Code skill tells agents to write these instead of HTML.
+
+**Time** (`mods/px-time`, `herdr-timetrack`, Linux): where the day goes, from a local sampler of the focused window
+(app, title, Herdr space and tab) every 30 s: active and idle time, by category, by Herdr space, by issue key, the day as
+10-minute slots, the last 7 days. Opt-in: `./install.sh --timetrack`.
+
+**Sidebar**: AI usage limits (`mods/px-usage`, needs `herdr-usage`) and CPU / GPU / RAM / disk (`mods/px-sysmon`).
+
+**Linux extras** (`linux/`): Herdr typing sounds (real Cherry MX Blue recordings from Mechvibes, softened; IBM Model M
+from bucklespring if present; SUPER+ALT+K mutes), a Neovim colorscheme `herdr` that follows Herdr's layout live (and a
+standalone `workbench` one).
+
+**Omarchy** (`omarchy/`): the `workbench` Omarchy theme (colours, three circuit wallpapers, bar), Workbench icons for
+apps and cursors, a workbench lock screen, a circuit-board / logic-analyzer screensaver, dot-matrix glyphs for the bar,
+console sounds for login, low battery and notifications. A theme-set hook switches lock view, cursors, menu and terminal
+fonts with the theme, so `omarchy theme set workbench` changes everything at once.
+
 **Voice computer** ([voice-computer/](voice-computer/)): a warm, talkative assistant for Herdr on local models through
 llama.cpp: LFM3-Omni-2B brain, LFM3-Audio-2B ears and voice, EmbeddingGemma recall. Talk with `cmd-shift-m`.
 Commands (focus agents, switch themes, show panels), briefings and "what needs me", reminders, pomodoro, notes,
@@ -47,19 +77,22 @@ cd personal-herdr-desktop
 ./install.sh            # or ./install.sh --no-voice
 ```
 
-Requirements: Herdr desktop; for voice also Go, `brew install llama.cpp sox`. On macOS 15 with Homebrew's llama.cpp,
+Requirements: Herdr desktop, `gh` for pull requests; for voice (macOS) also Go, `brew install llama.cpp sox`; on Linux
+PipeWire (`pw-cat`) for the typing sounds. With [omarchy-herdr-win31](https://github.com/makefunstuff/omarchy-herdr-win31)
+installed too, run this installer after it (both ship px-pane; this one has the Win 3.1 title bars as well). On macOS 15 with Homebrew's llama.cpp,
 the voice computer sets `GGML_METAL_BF16_DISABLE=1` so Metal works.
 
 The Windows 3.1 layout lives in [omarchy-herdr-win31](https://github.com/makefunstuff/omarchy-herdr-win31); its
 Microsoft assets are fetched on your machine, never stored in a repo.
 
-## Porting
+## Platforms
 
-Portable as is: themes, layouts, mods, art, sounds, the artifact format, the sync script, the voice computer's core.
-macOS-specific: `Herdr Voice.app` (microphone permission), `afplay`/`rec`, `osascript` media keys, `ioreg` GPU stats in
-the Monitor, Homebrew paths.
+Both: themes, layouts, mods, art, sounds, the document formats, the sync script. macOS only: the voice computer
+(`Herdr Voice.app`, `afplay`/`rec`, `osascript`, Homebrew). Linux only: typing sounds, time tracker, Omarchy theme. The
+installer drops layout panels whose mods aren't installed (Shepherdr 3.0's tasks, chat and artifacts come with it).
 
 ## Licence
 
 Apache-2.0 (the `px-*` mods are modified from Herdr's own mods). The voice computer is MIT (its own LICENSE). Fonts:
-PxPlus IBM VGA 8x16 (CC BY-SA 4.0), Pixelated MS Sans Serif (CC BY-SA 3.0); see `herdr-app/fonts/` and NOTICE.
+PxPlus IBM VGA 8x16 (CC BY-SA 4.0), Pixelated MS Sans Serif (CC BY-SA 3.0); see `herdr-app/fonts/` and NOTICE. Cherry MX
+Blue key sounds: Mechvibes, MIT.

@@ -8,6 +8,10 @@ herdr-app/fonts/PixelatedMSSansSerif-*.ttf: "lou" (fontstruct.com), CC BY-SA 3.0
 
 voice-computer/ is MIT licensed (voice-computer/LICENSE).
 
-Everything else (themes, layouts, art, icons, sprites, sounds, the Shepherdr, Desk and voice mods, the herdr.doc/1
-format and renderer, the sync script) is original to this project and released under Apache-2.0.
+linux/typing/mxblue/*.wav: cut from Mechvibes' "CherryMX Blue - PBT keycaps" sound pack
+(https://github.com/hainguyents13/mechvibes), MIT (linux/typing/mxblue/LICENSE-Mechvibes.txt).
+
+Everything else (themes, layouts, art, icons, cursors, sprites, sounds, fonts drawn here (WorkbenchGlyphs), the
+Shepherdr, Desk, PR, Reviews, Docs, Time and voice mods, the herdr.doc formats and renderers, the Omarchy workbench theme,
+lock screen and screensaver, the Neovim theme, the scripts) is original to this project and released under Apache-2.0.
 Liquid AI's LFM3 and Google's EmbeddingGemma models are downloaded at run time under their own licences; none are included.

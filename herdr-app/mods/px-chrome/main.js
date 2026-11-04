@@ -28,8 +28,9 @@ function toggleSidebar() {
 // Each themed layout's own alert sounds. Herdr keeps one sound setting for every layout, so the header
 // (in every one of these layouts) writes the shown layout's pair into settings.json when it differs.
 const SOUNDS_BY_LAYOUT = {
-  pixel: ["sounds/done-8bit.wav", "sounds/blocked-8bit.wav"],
-  win31: ["sounds/done-win31.wav", "sounds/blocked-win31.wav"],
+  // On this machine "pixel" is the Windows 3.1 layout and "dos" the DOS/EGA one.
+  pixel: ["sounds/done-win31.wav", "sounds/blocked-win31.wav"],
+  dos: ["sounds/done-8bit.wav", "sounds/blocked-8bit.wav"],
   fortress: ["sounds/done-fortress.wav", "sounds/blocked-fortress.wav"],
   workbench: ["sounds/done-workbench.wav", "sounds/blocked-workbench.wav"],
 };

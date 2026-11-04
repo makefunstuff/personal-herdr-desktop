@@ -1,0 +1,12 @@
+[Icon Theme]
+Name=Workbench
+Comment=Workbench chip-package app icons and amber pixel cursors (Herdr workbench theme)
+Inherits=Yaru-yellow-dark,Yaru-dark,Adwaita,hicolor
+Directories=scalable/apps
+
+[scalable/apps]
+Size=64
+MinSize=8
+MaxSize=512
+Context=Applications
+Type=Scalable

@@ -1,0 +1,4 @@
+#!/bin/sh
+# Mute or unmute Herdr typing sounds.
+f="$HOME/.local/state/herdr-typing-muted"
+if [ -e "$f" ]; then rm -f "$f"; notify-send -t 1500 "Typing sounds on"; else touch "$f"; notify-send -t 1500 "Typing sounds off"; fi

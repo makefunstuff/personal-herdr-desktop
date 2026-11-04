@@ -1,0 +1,14 @@
+[Unit]
+Description=Herdr time tracker: samples the focused window every 30 s (kept on this machine)
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 -I %h/.local/bin/herdr-timetrack
+Environment=PATH=%h/.local/bin:/usr/share/omarchy/bin:/usr/local/bin:/usr/bin:/bin
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=graphical-session.target
