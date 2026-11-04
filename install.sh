@@ -20,7 +20,8 @@ for a in "$@"; do case $a in --no-voice) VOICE=0 ;; --timetrack) TIMETRACK=1 ;; 
 backup() {
   [ -e "$1" ] || return 0
   case $1 in
-    "$DST"/mods/*|"$DST"/lib/*|"$DST"/core/*) r=${1#"$DST"/}; mkdir -p "$DST/backups/$TS/$(dirname "$r")"; cp -R "$1" "$DST/backups/$TS/$r" ;;
+    # Into its folder there, never over what this run already kept (the first copy is the one from before the run).
+    "$DST"/mods/*|"$DST"/lib/*|"$DST"/core/*) r=${1#"$DST"/}; mkdir -p "$DST/backups/$TS/$(dirname "$r")"; cp -Rn "$1" "$DST/backups/$TS/$(dirname "$r")/" ;;
     *) cp -R "$1" "$1.bak.$TS" ;;
   esac
 }
