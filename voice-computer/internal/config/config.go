@@ -204,6 +204,16 @@ func DefaultOwner() string {
 }
 
 // hfModel finds a file in the Hugging Face cache (the newest snapshot that has it).
+// firstModel is the first of files that's downloaded (the card's choice first).
+func firstModel(repo string, files ...string) string {
+	for _, f := range files {
+		if p := hfModel(repo, f); p != "" {
+			return p
+		}
+	}
+	return ""
+}
+
 func hfModel(repo, file string) string {
 	home, _ := os.UserHomeDir()
 	dir := filepath.Join(home, ".cache/huggingface/hub", "models--"+strings.ReplaceAll(repo, "/", "--"), "snapshots")
@@ -223,9 +233,9 @@ func Default() Config {
 		TTS:        Endpoint{URL: "http://127.0.0.1:8791", Model: "lfm3-audio"},
 		LlamaServe: "llama-server",
 		Brain: Server{Model: hfModel("LiquidAI/LFM3-Omni-2B-GGUF", "LFM3-Omni-2B-Q4_K_M.gguf"), Port: 8790,
-			Args: []string{"-c", "16384", "--reasoning", "on", "--reasoning-budget", "128", "--jinja", "-np", "1"}},
+			Args: []string{"-c", "16384", "--reasoning", "off", "--jinja", "-np", "1"}}, // LFM3-Omni is a non-reasoning model (its card)
 		Audio: Server{Model: hfModel("LiquidAI/LFM3-Audio-2B-GGUF", "LFM3-Audio-2B-Q4_K_M.gguf"),
-			MMProj: hfModel("LiquidAI/LFM3-Audio-2B-GGUF", "mmproj-LFM3-Audio-2B-Q4_0.gguf"), Port: 8791,
+			MMProj: firstModel("LiquidAI/LFM3-Audio-2B-GGUF", "mmproj-LFM3-Audio-2B-Q8_0.gguf", "mmproj-LFM3-Audio-2B-Q4_0.gguf"), Port: 8791,
 			Args: []string{"-c", "8192", "-np", "2"}}, // two slots: an answer's speech and a filler or announcement at once
 		EmbedSrv: Server{Model: filepath.Join(home(), ".local/share/nvim/semantic-grep/models/embeddinggemma-2-Q8_0.gguf"), Port: 8793,
 			Args: []string{"--embedding", "-c", "2048", "-np", "1"}},

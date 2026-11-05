@@ -261,6 +261,8 @@ func withModel(data []byte, model string) []byte {
 		return data
 	}
 	m["model"] = model
+	m["temperature"] = 0 // the local LFM3's card: greedy decoding for text
+	delete(m, "chat_template_kwargs")
 	out, err := json.Marshal(m)
 	if err != nil {
 		return data
