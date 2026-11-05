@@ -255,7 +255,12 @@ if [ "$OS" = Linux ]; then
   fi
   systemctl --user daemon-reload
   systemctl --user enable --now herdr-keyclick.service
-  [ -d "$DST/mods/tabs-tasks" ] && systemctl --user enable --now herdr-task-workspaces.service
+  # restart, not just enable --now: a running service keeps the script it started with, and this one
+  # only picks up a fix when it is restarted.
+  if [ -d "$DST/mods/tabs-tasks" ]; then
+    systemctl --user enable herdr-task-workspaces.service
+    systemctl --user restart herdr-task-workspaces.service
+  fi
   [ "$TIMETRACK" = 1 ] && systemctl --user enable --now herdr-timetrack.service
   if command -v omarchy >/dev/null; then
     echo "== Omarchy: the workbench theme, icons and cursors, lock screen, screensaver, glyphs, sounds"
