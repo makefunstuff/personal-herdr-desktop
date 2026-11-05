@@ -44,10 +44,13 @@ const TASK_STATUS = { needs: "need", working: "work", merging: "merging", ready:
 const STARTING_MS = 90000;
 // Minutes left, as Shepherdr writes them under a task's dot: "6m", "<1m", "2h".
 const short3 = (n) => (n < 1 ? "<1m" : n < 60 ? `${n}m` : `${Math.round(n / 60)}h`);
-const ago3 = (ms, now = Date.now()) => {
+const ago3 = (ms, now = Date.now(), suffix = true) => {
   const m = Math.floor((now - ms) / 60000);
-  return m < 1 ? "just now" : `${m < 60 ? `${m}m` : m < 1440 ? `${Math.floor(m / 60)}h` : `${Math.floor(m / 1440)}d`} ago`;
+  const w = m < 1 ? "<1m" : m < 60 ? `${m}m` : m < 1440 ? `${Math.floor(m / 60)}h` : `${Math.floor(m / 1440)}d`;
+  return suffix ? (m < 1 ? "just now" : `${w} ago`) : w;
 };
+// Every second line starts with a capital (core/tasks.js's capital()).
+const capital3 = (s) => (s == null ? s : /^[a-z](?![A-Z])/.test(String(s)) ? String(s)[0].toUpperCase() + String(s).slice(1) : String(s));
 
 // Just started: its terminal still runs the shell that starts the agent, or the agent is idle before
 // its first message lands (herdr-task's starting()).
@@ -170,16 +173,22 @@ async function tasks3Snapshot(dir) {
       const last = t.agents?.[t.agents.length - 1] ?? null;
       tasks.push({ id: `${prefix}-${t.id}`, name: t.title, place: pid, status: TASK_STATUS[p.section] ?? p.section,
         section: p.section, statusWord: TASK_WORD[p.section] ?? String(p.section).toUpperCase(), why: p.why,
-        sub: secondLine3(t, p, w, queued), report: w, live: live.map((a) => a.address),
-        age: t.started ? ago3(t.started).replace(/ ago$/, "") : "", archived: t.archived ?? null, doneAt: t.done_at ?? null,
-        agent: { chat: `${prefix}-${t.id}/Agent`, address: agent?.address ?? last?.address ?? null },
+        sub: capital3(secondLine3(t, p, w, queued)), report: w, live: live.map((a) => a.address),
+        age: t.started ? ago3(t.started, Date.now(), false) : "", archived: t.archived ?? null, doneAt: t.done_at ?? null,
+        // No live agent: no address, so a click opens the Tasks list, not an ended terminal.
+        agent: { chat: `${prefix}-${t.id}/Agent`, address: agent?.address ?? null },
         cli: agent?.cli ?? last?.agent ?? null, pr: t.pr ?? null,
         worktree: t.worktree, branch: t.branch, desc: t.prompt });
     }
     const ks = tasks.filter((k) => k.place === pid && !k.archived);
     places[places.length - 1].status = ks.some((k) => k.status === "need") ? "need" : ks.some((k) => k.status === "work") ? "work" : "idle";
   }
-  return { places, tasks, machines: [], asks: {}, needs: [], artifacts: [], tasks3: true };
+  // What needs the person now, for the panel's sidebar and the Monitor's Waiting on you: a task whose
+  // section is Needs you, in Herdr's words (the 3.1 Tasks panel's Needs you group also has Assistant
+  // questions and failed automations, which this read-only snapshot of the task store can't see).
+  const needs = tasks.filter((k) => !k.archived && k.section === "needs")
+    .map((k) => ({ id: k.id, chat: taskChat(k), place: k.place, task: k.id, text: k.why ?? k.sub }));
+  return { places, tasks, machines: [], asks: {}, needs, artifacts: [], tasks3: true };
 }
 
 // ---- read-only view of the legacy (2.0) home: nothing here ever writes to it
@@ -228,7 +237,12 @@ async function legacyChat(dir, key) {
 async function loadSources() {
   try {
     const extra = JSON.parse(await fs.readFile(`${appHome()}/shepherdr-sources.json`, "utf8"));
-    for (const x of Array.isArray(extra) ? extra : []) if (x?.id && !SOURCES.some((s) => s.id === x.id)) SOURCES.push({ via: null, ...x });
+    // The 3.1 store is this computer's own (~/.herdr/tasks): a source's `tasks3` would read these files
+    // under another machine's name, so it is never taken from the file.
+    for (const x of Array.isArray(extra) ? extra : []) if (x?.id && !SOURCES.some((s) => s.id === x.id)) {
+      const { tasks3, ...rest } = x;
+      SOURCES.push({ via: null, ...rest });
+    }
   } catch {}
 }
 const API = "http://127.0.0.1:7787/api";
@@ -854,7 +868,7 @@ export default class Shepherdr extends View {
     const pct = r?.progress ?? null, left = r?.eta ?? null;
     const moving = (st === "work" || st === "merging") && !paused;
     // A bare working node still shows its conveyor (as "--%"); a merging one has no report to show.
-    const bar = st === "work" || (st === "need" && Boolean(r));
+    const bar = st === "work" || (st === "need" && Boolean(r) && (k.live ?? []).length > 0);
     const said = k.sub ?? r?.msg ?? null;
     const corner = (pos) => div().absolute().w(7).h(7).border_color(col)
       .when(pos.includes("t"), (e) => e.top(-1).border_t(2)).when(pos.includes("b"), (e) => e.bottom(-1).border_b(2))
@@ -975,11 +989,11 @@ export default class Shepherdr extends View {
           .child(h_flex().flex_1().gap(18).items_start().flex_wrap().children(this.cells(src, h).map((c) => this.cell(t, c)))));
       }
       const tasks = (s.tasks ?? []).filter((k) => !k.archived);
-      const live = tasks.filter((k) => ["need", "work", "merging", "ready"].includes(k.status))
-        .sort((a, b) => ["need", "work", "merging", "ready"].indexOf(a.status) - ["need", "work", "merging", "ready"].indexOf(b.status));
+      const live = tasks.filter((k) => ["need", "ready", "merging", "work"].includes(k.status))
+        .sort((a, b) => ["need", "ready", "merging", "work"].indexOf(a.status) - ["need", "ready", "merging", "work"].indexOf(b.status));
       const q = tasks.filter((k) => k.status === "queued" || k.status === "todo");
       run += live.filter((k) => k.status === "work" || k.status === "merging").length;
-      wait += src.tasks3 ? live.filter((k) => k.status === "need").length : this.waiting(s).length; queued += q.length;
+      wait += this.waiting(s).length; queued += q.length;
       // Herdr's own agents on this computer (hand-started ones): the ongoing work outside Shepherdr's tasks.
       // A task's agents are its task nodes already (PHD-1 gives them a space and a herdr.task label).
       const taskAgents = new Set(live.flatMap((k) => k.live ?? []));
@@ -989,8 +1003,8 @@ export default class Shepherdr extends View {
       out.push(live.length || herdr.length ? h_flex().w_full().p(12).gap(12).flex_wrap()
           .children(live.map((k) => this.node(t, src, k))).children(herdr.map((a) => this.agentNode(t, a)))
         : div().px(12).py(10).text_size(11).text_color(t.dim).child("NO ACTIVE NODES"));
-      // What needs the person: a 3.1 task whose agent waits on them, in Herdr's own words; a 2.1 source's needs.
-      const waits = src.tasks3 ? live.filter((k) => k.status === "need").map((k) => ({ id: k.id, chat: taskChat(k), place: k.place, task: k.id, text: k.why ?? k.sub })) : this.waiting(s, src);
+      // What needs the person: the panel's own needs (a 3.1 task whose agent waits on them, in Herdr's words).
+      const waits = this.waiting(s, src);
       if (waits.length) out.push(v_flex().w_full().px(12).pb(10).gap(2)
         .child(div().text_size(10.5).font_semibold().text_color(t.blocked).child(`WAITING ON YOU · ${waits.length}`))
         .children(waits.slice(0, 12).map((n, i) => {
@@ -1018,7 +1032,7 @@ export default class Shepherdr extends View {
       .child(div().text_color(t.accent).child(crook(14))).child(div().text_size(13).font_semibold().child("OPERATIONS MONITOR"))
       .child((() => {
         const msgs = SOURCES.flatMap((src) => (this.state[src.id].snap?.tasks ?? []).filter((k) => !k.archived && ["need", "work", "merging"].includes(k.status))
-          .map((k) => `${k.id} ▸ ${k.report?.msg ?? k.sub ?? k.statusWord}`));
+          .map((k) => `${k.id} ▸ ${k.sub ?? k.report?.msg ?? k.statusWord}`));
         const m = msgs.length ? msgs[Math.floor(this.tick / 16) % msgs.length] : "ALL QUIET";
         return h_flex().flex_1().min_w(0).px(10).h(22).items_center().bg(t.background).border_1().border_color(t.border)
           .child(div().text_size(11).text_color(t.done).child(this.tick % 4 < 2 ? "▶ " : "▷ ")).child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.foreground).child(oneLine(m, 120)));
