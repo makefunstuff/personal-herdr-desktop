@@ -220,31 +220,30 @@ export default class Spaces extends View {
     openOverlay({ frame: "none", mod: "px-menu", kind: "popup", width: 200, height: 260, props: { tab: "space", target: { id: w.id } } });
   }
 
-  // Spaces in order, each worktree space moved under its main checkout's.
+  // Spaces in order, each worktree space moved under its main checkout's, each task's workspace
+  // under the space the service names for it (its repo's space, else the one it was started from).
   ordered() {
     const sp = spaces(), ps = panes();
     const ready = (w) => this.shown.has(w.id) || where(w, ps) in this.git || Date.now() - (this.born[w.id] ??= Date.now()) > 1500;
     for (const w of sp) if (!this.shown.has(w.id) && ready(w)) this.shown.add(w.id);
-    const list = sp.map((w, i) => ({ w, i, g: this.git[where(w, ps)] ?? null, task: this.tasks[w.id] ?? null })).filter((r) => this.shown.has(r.w.id));
+    const all = sp.map((w, i) => ({ w, i, g: this.git[where(w, ps)] ?? null, task: this.tasks[w.id] ?? null })).filter((r) => this.shown.has(r.w.id));
+    // A task's workspace always nests by the service's parent, never as a worktree row: its folder
+    // may be a worktree, but it is the task's space and gets the task's row.
+    const list = all.filter((r) => !r.task), tasks = all.filter((r) => r.task);
     const mains = new Set(list.filter((r) => r.g && !r.g.linked).map((r) => r.g.repo));
     const nested = (r) => r.g?.linked && mains.has(r.g.repo);
     const out = [];
-    const placedIds = new Set(); // spaces already in the list (a worktree is only listed once)
     const placed = new Set(); // repos whose worktrees are listed (under the first of its spaces)
     for (const r of list) {
       if (nested(r)) continue;
       out.push({ ...r, tree: null });
-      placedIds.add(r.w.id);
       if (!r.g || r.g.linked || placed.has(r.g.repo)) continue;
       placed.add(r.g.repo);
       const kids = list.filter((k) => nested(k) && k.g.repo === r.g.repo);
-      kids.forEach((k, n) => { out.push({ ...k, tree: n === kids.length - 1 ? "└─" : "├─" }); placedIds.add(k.w.id); });
+      kids.forEach((k, n) => out.push({ ...k, tree: n === kids.length - 1 ? "└─" : "├─" }));
     }
-    // A task's workspace belongs under the space of the checkout its worktree is from (the
-    // worktree pass above gets that), else under the space it was started from.
     const extra = new Map(), loose = [];
-    for (const r of list) {
-      if (!r.task || placedIds.has(r.w.id)) continue;
+    for (const r of tasks) {
       const at = out.find((x) => x.w.id === (r.task.parent ?? r.task.space));
       if (at) { if (!extra.has(at.w.id)) extra.set(at.w.id, []); extra.get(at.w.id).push(r); }
       else loose.push(r);
@@ -326,7 +325,7 @@ export default class Spaces extends View {
     const on = w.active;
     const isTask = Boolean(task);
     // A task workspace: its worker's own state (working, needs you, done) and how far it got.
-    const status = isTask ? (({ working: "working", blocked: "blocked", done: "done" })[task.status] ?? "idle") : w.status;
+    const status = isTask ? (({ working: "working", blocked: "blocked", done: "done", ready: "blocked" })[task.status] ?? "idle") : w.status;
     const led = isTask ? (t[status] ?? t.dim) : (w.status === "working" ? t.working : w.status === "blocked" ? t.blocked : w.status === "done" ? t.done : t.border);
     const colors = shared("space.colors") ?? {};
     const color = colors[w.id] ?? "ansi6";
@@ -413,7 +412,7 @@ export default class Spaces extends View {
 
   compact({ w, i, task }, t) {
     // Narrow sidebar: a task keeps its id and its worker's state, not the plain space's.
-    const status = task ? (({ working: "working", blocked: "blocked", done: "done" })[task.status] ?? "idle") : w.status;
+    const status = task ? (({ working: "working", blocked: "blocked", done: "done", ready: "blocked" })[task.status] ?? "idle") : w.status;
     return h_flex()
       .id(`space-${w.id}`)
       .h(26)

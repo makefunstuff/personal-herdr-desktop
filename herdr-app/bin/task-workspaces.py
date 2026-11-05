@@ -25,7 +25,8 @@ noted the space (shared.json's "coordinator.seen") or, with the window open, aft
 
 While the window is open, a write from here is a layout change it didn't make: Herdr shows its
 "Layout changed elsewhere" notice (the document is shared by connected screens). It is only written
-when a task appears, goes or is renamed, never for a status or progress change.
+when a task appears, goes or is renamed, or its worker is replaced - never for a status or progress
+change.
 
 A service, not a mod: a mod only lives inside an open window and draws the document it is handed.
 The document itself has to be written, also while the window is closed (that is what herdr-core
@@ -206,7 +207,8 @@ def desired(lists, terminals, spaces):
                 "live": bool(live_addr),
                 "agent": (agent.get("agent") or None),
                 "log": (agent.get("log") or None),
-                "status": status or t.get("status") or ("working" if t.get("state") == "running" else "idle"),
+                "status": "ready" if (t.get("state") == "ready" and status not in ("working", "blocked"))
+                          else (status or t.get("status") or ("working" if t.get("state") == "running" else "idle")),
                 "progress": round(done) if num(done) else None,
                 "doing": text(progress.get("text"), 120) or None,
                 "left": round(progress["left"] / 60000) if num(progress.get("left")) else None,
@@ -269,13 +271,14 @@ def app_open():
 
 
 def seen_by_tab_bar():
-    """The space ids Shepherdr's tab bar has noted (shared.json: coordinator.seen)."""
+    """The space ids Shepherdr's tab bar has noted (shared.json: coordinator.seen), or None when no
+    tab bar writes that list (px-tabs): a new workspace then waits a few seconds instead."""
     try:
         with open(SHARED, encoding="utf-8") as f:
             v = json.load(f).get("coordinator.seen")
-        return set(v) if isinstance(v, list) else set()
     except (OSError, ValueError, AttributeError):
-        return set()
+        return None
+    return set(v) if isinstance(v, list) else None
 
 
 def load_registry():
@@ -354,14 +357,23 @@ def one_pass(session=None, dry_run=False):
         missing.pop(sid, None)
         tabs = tabs_of(t)
         if not (s.get("tabs") or []):
-            # Written with no tabs a moment ago (see the top): fill them once the tab bar has seen it.
-            if sid in seen or (window and now - pending.get(sid, now) >= FILL_AFTER):
+            # Written with no tabs a moment ago (see the top): fill them once the tab bar has noted
+            # the space. A tab bar that writes no such list gets a few seconds from the moment the
+            # window opened - never from when the space was made with the window shut, or the tab
+            # bar would see it fresh and give it an Assistant before this fills it.
+            p = pending.get(sid)
+            if not isinstance(p, dict):
+                p = {"at": now, "window": window}      # a pending time from an older version
+            elif window and not p.get("window"):
+                p = {"at": now, "window": True}        # the window just opened: let the tab bar look
+            pending[sid] = p
+            waited = now - p["at"]
+            if (seen is not None and sid in seen) or (window and waited >= (FILL_AFTER if seen is None else 30)):
                 s = dict(s, tabs=tabs, name=t["name"], folder=t["folder"])
                 pending.pop(sid, None)
                 filled.append(t["ref"])
                 changed = True
             else:
-                pending.setdefault(sid, now)
                 s = dict(s, name=t["name"], folder=t["folder"])
         elif not same_tabs(s.get("tabs"), tabs) or s.get("name") != t["name"] or os.path.normpath(s.get("folder") or "") != os.path.normpath(t["folder"]):
             s = dict(s, tabs=tabs, name=t["name"], folder=t["folder"])
@@ -377,10 +389,12 @@ def one_pass(session=None, dry_run=False):
         missing.pop(t["id"], None)
         created.append(t["ref"])
         changed = True
+    written = True
     if changed and not dry_run:
         (res,) = rpc([("doc.set", {"name": "herdr-app", "value": dict(value, spaces=out_spaces), "version": version})], session)
         if "error" in res:
             log("doc.set refused (another writer):", json.dumps(res.get("error"))[:200])
+            written = False
         else:
             for label, items in (("created", created), ("tabs", filled), ("removed", removed)):
                 if items:
@@ -398,7 +412,7 @@ def one_pass(session=None, dry_run=False):
     # A space kept for a pass while its task is only just gone keeps its task row meanwhile.
     for sid, old in kept_old.items():
         tasks.setdefault(sid, old)
-    if not dry_run:
+    if not dry_run and written:
         save_registry(tasks, pending, missing, have, registry)
     return {"created": created, "filled": filled, "removed": removed, "changed": changed, "tasks": tasks}
 

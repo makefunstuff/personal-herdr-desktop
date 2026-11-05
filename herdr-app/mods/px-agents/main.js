@@ -116,7 +116,7 @@ export default class Agents extends View {
         const space = this.taskSpace(t);
         return { address: t.terminal, pane: null, space: space?.id ?? t.space ?? null, space_name: space?.name ?? "",
           tab: null, tab_index: 0, tab_name: t.ref,
-          status: ({ working: "working", blocked: "blocked", done: "done" })[t.status] ?? "idle",
+          status: ({ working: "working", blocked: "blocked", done: "done", ready: "blocked" })[t.status] ?? "idle",
           app: k.status?.app ?? null,
           program: k.program ?? { key: "agent", name: t.agent ?? "agent", icon: null, tint: true, tile: null, color: null, shell: false, agent: true },
           title: `${t.ref} ${t.title ?? ""}`.trim(), seq: 0, pinned: false, focused: false, task: t };
@@ -296,8 +296,11 @@ export default class Agents extends View {
     const rest = list.filter((a) => !this.pins.includes(a.address));
     list = [...pinned, ...rest];
     // Task rows whose worker has a pane stay in the keyboard order; ones without a pane (before
-    // their workspace has it) have nothing to focus.
-    setAgentOrder(list.filter((a) => !a.task || a.pane).map((a) => a.address));
+    // their workspace has it) have nothing to focus. The rail numbers rows in that same order, so
+    // the key that focuses "3" is the row showing 3.
+    const ordered = list.filter((a) => !a.task || a.pane);
+    setAgentOrder(ordered.map((a) => a.address));
+    const number = new Map(ordered.map((a, i) => [a.address, i + 1]));
 
     const withKids = (a, i) => {
       const subs = collapsed ? [] : this.tree(all, a.address);
@@ -364,7 +367,7 @@ export default class Agents extends View {
           .gap(4)
           .hover((s) => s.bg(t.hover))
           .on_click(() => (a.task && !a.pane ? run("space.select", { id: a.task.id }) : run("pane.focus", { pane: a.pane })))
-          .child(div().flex_1().min_w(0).whitespace_nowrap().text_right().text_color(t.muted).child(String(i + 1)))
+          .child(div().flex_1().min_w(0).whitespace_nowrap().text_right().text_color(t.muted).child(String(number.get(a.address) ?? "")))
           .child(h_flex().w(14).flex_none().items_center().justify_center().child(this.status(t, a, true)));
       }
       const when = this.since(a);
