@@ -40,6 +40,14 @@ function statsNow() {
   };
 }
 
+// A day button's label: Today, Yesterday, else the weekday and date ("Mon 02").
+function dayName(d) {
+  const at = new Date(`${d}T12:00`), now = new Date(), y = new Date(now); y.setDate(now.getDate() - 1);
+  if (d === ymd(now)) return "Today";
+  if (d === ymd(y)) return "Yesterday";
+  return `${"Sun Mon Tue Wed Thu Fri Sat".split(" ")[at.getDay()]} ${d.slice(8)}`;
+}
+
 export default class Desk extends View {
   init(_props, cx) {
     this.tick = 0; this.note = null; this.day = ymd(new Date()); this.days = []; this.err = null;
@@ -90,6 +98,7 @@ export default class Desk extends View {
     this.today = today;
     try { this.note = await fs.readFile(`${NOTES()}/${this.day}.md`, "utf8"); } catch { this.note = null; }
     try { this.days = (await fs.readdir(NOTES())).filter((f) => /^\d{4}-\d\d-\d\d\.md$/.test(f)).map((f) => f.slice(0, 10)).sort().reverse().slice(0, 7); } catch { this.days = []; }
+    if (!this.days.includes(today)) this.days = [today, ...this.days].slice(0, 7); // today is a day even before its first note
   }
   async writeNote(day, text) {
     await fs.mkdir(NOTES(), { recursive: true }).catch(() => {});
@@ -264,7 +273,7 @@ export default class Desk extends View {
       .when(this.days.length > 1, (e) => e.child(h_flex().gap(4).pb(4).flex_wrap().children(this.days.map((d) =>
         h_flex().id(`day-${d}`).px(5).h(18).items_center().border_1().border_color(d === this.day ? t.accent : t.border)
           .text_size(10).text_color(d === this.day ? t.accent : t.dim).cursor_pointer()
-          .on_click((_e, cx) => { this.day = d; cx.spawn(async (cx) => { await this.loadNotes(); cx.notify(); }); }).child(d.slice(5))))))
+          .on_click((_e, cx) => { this.day = d; cx.spawn(async (cx) => { await this.loadNotes(); cx.notify(); }); }).child(dayName(d))))))
       .children(rows.length ? rows : [div().py(4).text_size(11.5).text_color(t.dim).child(this.note === null ? "No notes yet today. Type one below." : "Empty.")])
       .child(h_flex().pt(6).items_center().border_1().border_color(t.border).bg(t.input)
         .child(div().pl(8).pr(4).text_color(t.accent).child("›"))
