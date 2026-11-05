@@ -204,10 +204,12 @@ export default class Agents extends View {
   }
 
   // Live sub-agents of `addr`, depth first, each with the tree lines in front of it. A
-  // Shepherdr 3.1 task worker is a child of its space's Assistant but is a task: it shows as the
-  // task's row (taskAgents), with its id, title and workspace, not as a nameless child here.
+  // Shepherdr 3.1 task worker shows as the task's row (taskAgents), with its id, title and
+  // workspace, not as a nameless child here - but only when a task row really stands for that
+  // terminal: a task's reviewer or browser agent, or a worker in a task this service doesn't
+  // mirror (another machine), keeps its place under its parent.
   tree(all, addr, lead = []) {
-    const kids = all.filter((k) => k.parent === addr && k.state === "live" && !k.labels?.["herdr.task"]);
+    const kids = all.filter((k) => k.parent === addr && k.state === "live" && !this.taskFor(k.address));
     return kids.flatMap((k, i) => {
       const last = i === kids.length - 1;
       return [

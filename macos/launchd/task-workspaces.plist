@@ -14,6 +14,7 @@
   </array>
   <key>EnvironmentVariables</key><dict>
     <key>PATH</key><string>HOMEDIR/.local/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>HERDR_APP_HOME</key><string>HOMEDIR/.config/herdr-app</string>
   </dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>

@@ -27,11 +27,15 @@ While the window is open, a write from here is a layout change it didn't make: H
 "Layout changed elsewhere" notice (the document is shared by connected screens). It is only written
 when a task appears, goes or is renamed, never for a status or progress change.
 
+A service, not a mod: a mod only lives inside an open window and draws the document it is handed.
+The document itself has to be written, also while the window is closed (that is what herdr-core
+keeps), so this runs as a user service and the sidebars only draw what it wrote.
+
 Writes ~/.config/herdr-app/task-workspaces.json for this repo's sidebars (px-spaces, px-agents):
 which workspace a task has, the space to nest it under, its id, status and progress.
 
-  task-workspaces.py                 one pass (px-status, the installer's first run)
-  task-workspaces.py --every 3       keep going, once every 3 s (the user service)
+  task-workspaces.py                 one pass (a hand run; --dry-run says what it would do)
+  task-workspaces.py --every 3       keep going, once every 3 s (the user service, install.sh)
   task-workspaces.py --session NAME  another hc session (default: this computer's)
   task-workspaces.py --dry-run       say what it would do, change nothing
 """

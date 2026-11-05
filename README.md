@@ -28,7 +28,8 @@ All art and sounds are original and drawn as vectors, so they stay sharp on Reti
 - **Artifacts** in `herdr.doc/1` ([spec](herdr-app/shepherdr-doc/SPEC.md)): agents write JSON blocks, Herdr draws them
   natively, the stock `render.html` draws them on the web and phone.
 - `bin/shepherdr-desktop-sync.py` shows a Shepherdr's agents as Herdr spaces and tabs.
-- **Task workspaces** (`bin/task-workspaces.py`, a user service: `herdr-task-workspaces`): each started Shepherdr 3.x
+- **Task workspaces** (`bin/task-workspaces.py`, a user service: `herdr-task-workspaces`; a service and not a mod
+  because the document has to be written even with no window open, and mods only draw it): each started Shepherdr 3.x
   task becomes a real Herdr workspace on its worktree, under the space of the repo it is from (the same place the
   sidebar already puts worktrees). Its tabs are the task's Chat, its agent's live terminal (the one it runs in, no new
   one), Files, Changes and Pull request; clicking it in the sidebar opens its Chat. It goes when the task is done,

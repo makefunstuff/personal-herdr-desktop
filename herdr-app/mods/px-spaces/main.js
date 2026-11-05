@@ -367,8 +367,9 @@ export default class Spaces extends View {
         if (from !== null && over === i && from !== i) run("space.move", { id: spaces()[from].id, index: i + 1 });
         else if (from === i) {
           run("space.select", { id: w.id });
-          // A task's workspace opens on its Chat, whatever tab it was last left on.
-          if (task?.chat) run("tab.select", { id: task.chat });
+          // A task's workspace opens on its Chat, whatever tab it was last left on. Until its
+          // tabs exist (the service fills them a few seconds after the space) there is none to open.
+          if (task?.chat && task.tabs !== false) run("tab.select", { id: task.chat });
         }
         cx.notify();
       })
@@ -423,7 +424,7 @@ export default class Spaces extends View {
       .hover((s) => s.bg(t.hover))
       .on_click(() => {
         run("space.select", { id: w.id });
-        if (task?.chat) run("tab.select", { id: task.chat });
+        if (task?.chat && task.tabs !== false) run("tab.select", { id: task.chat });
       })
       .child(div().text_color(w.active ? t.foreground : t.muted).child(task?.ref ?? String(i + 1)))
       .child(div().text_color(tone(t, status)).child(glyph(status)));
