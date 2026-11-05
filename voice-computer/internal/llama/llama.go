@@ -160,3 +160,66 @@ func KillStale(pidFile string) {
 	}
 	syscall.Kill(-pid, syscall.SIGKILL)
 }
+
+// Lazy runs a child only while it's wanted: Ensure starts it (and waits for its /health), and it stops
+// after idle without an Ensure. The backup brain behind a cloud one: no memory held until it's needed.
+type Lazy struct {
+	Child *Child
+	Idle  time.Duration
+	mu    sync.Mutex
+	stop  context.CancelFunc
+	last  time.Time
+}
+
+// Ensure has the child up (starting it under parent if it isn't), at most wait for it to answer.
+func (l *Lazy) Ensure(parent context.Context, wait time.Duration, logf func(string, ...any)) error {
+	l.mu.Lock()
+	l.last = time.Now()
+	if l.stop == nil {
+		ctx, cancel := context.WithCancel(parent)
+		l.stop = cancel
+		go l.Child.Run(ctx, logf)
+		go l.reap(ctx)
+	}
+	l.mu.Unlock()
+	deadline := time.Now().Add(wait)
+	for time.Now().Before(deadline) {
+		if l.Child.Ready() {
+			return nil
+		}
+		time.Sleep(300 * time.Millisecond)
+	}
+	return fmt.Errorf("%s didn't come up in %s", l.Child.Name, wait)
+}
+
+// reap stops the child after Idle without an Ensure.
+func (l *Lazy) reap(ctx context.Context) {
+	t := time.NewTicker(30 * time.Second)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			l.mu.Lock()
+			if l.stop != nil && time.Since(l.last) > l.Idle {
+				l.stop()
+				l.stop = nil
+				l.mu.Unlock()
+				return
+			}
+			l.mu.Unlock()
+		}
+	}
+}
+
+// Ready says whether the child's model is loaded: /health answers 200 (it says 503 while loading).
+func (c *Child) Ready() bool {
+	cl := http.Client{Timeout: 500 * time.Millisecond}
+	resp, err := cl.Get(fmt.Sprintf("http://127.0.0.1:%d/health", c.Port))
+	if err != nil {
+		return false
+	}
+	resp.Body.Close()
+	return resp.StatusCode == http.StatusOK
+}

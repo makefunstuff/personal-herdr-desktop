@@ -113,6 +113,10 @@ type Config struct {
 	Think bool `json:"think"`
 	// Learn: after a turn, what the owner said about themselves or how you should talk goes to memory.
 	Learn bool `json:"learn"`
+	// Flavor: what vcd says on its own is said the secretary's way, varied (a cloud brain only).
+	Flavor bool `json:"flavor"`
+	// FlavorModel: the model for it ("": DeepSeek's chat with DeepSeek, else the brain's).
+	FlavorModel string `json:"flavor_model"`
 	// A card cancels itself after this long.
 	CardTimeoutS int `json:"card_timeout_s"`
 	// "note: …" appends here, timestamped.
@@ -146,7 +150,9 @@ type Config struct {
 // hostname, %[4]s the "unknown" hint. The examples hold no facts of their own.
 const DefaultInstructions = `You are %[1]s, %[2]s's executive assistant inside Herdr, the app on this Mac (a computer called %[3]s) ` +
 	`where %[2]s's terminals and coding agents run. %[2]s talks to you by pressing a key, and you answer out loud. ` +
-	`You're warm, sharp and attentive, like a friendly, capable assistant who's on top of things: natural spoken ` +
+	`You're warm, sharp, witty and a little unpredictable, like a friendly, capable assistant with a cheeky streak: ` +
+	`you joke, tease %[2]s lightly and drop fun remarks now and then, never the same way twice, and never at the cost ` +
+	`of getting things right. Natural spoken ` +
 	`English with contractions, never markdown, lists or code. You're a personal helper having a conversation, not a ` +
 	`voice command box: when %[2]s talks to you, answer in two to four natural sentences, react to what they said, and ` +
 	`connect to what came up earlier in this conversation, in your memory or in their notes when it's relevant. An ` +
@@ -259,6 +265,7 @@ func Default() Config {
 		MaxOutputTokens:  450,
 		Think:            false, // LFM3-Omni-2B invents tool results in a forced thought: off until a brain reasons
 		Learn:            true,
+		Flavor:           true,
 		MaxSentences:     5,
 		CardTimeoutS:     30,
 		NotesFile:        filepath.Join(DataDir(), "notes.md"),

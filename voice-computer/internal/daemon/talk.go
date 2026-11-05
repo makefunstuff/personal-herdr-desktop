@@ -21,6 +21,9 @@ func (d *Daemon) loadConversation() {
 	for _, t := range d.convo.Last(d.cfg.History) {
 		d.turns = append(d.turns, Turn{You: t.You, Computer: t.Computer, At: t.At})
 	}
+	if personaNotes() == "" && len(d.turns) >= personaEvery { // a history but no persona yet: grow one from it
+		go d.evolvePersona()
+	}
 }
 
 func (d *Daemon) lastKind() string {

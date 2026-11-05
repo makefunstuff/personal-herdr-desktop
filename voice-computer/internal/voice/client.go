@@ -20,9 +20,11 @@ import (
 )
 
 type Client struct {
-	Backend             string
-	STT, Chat, TTS      config.Endpoint
-	ChatFallback        config.Endpoint // the brain's second choice (the local one)
+	Backend        string
+	STT, Chat, TTS config.Endpoint
+	ChatFallback   config.Endpoint // the brain's second choice (the local one)
+	// BeforeFallback, when set, has the fallback up first (the local brain starts on demand).
+	BeforeFallback      func(ctx context.Context) error
 	ChatExtra, TTSExtra map[string]any
 	HTTP                *http.Client
 }
@@ -250,6 +252,11 @@ func (c *Client) ChatDo(ctx context.Context, path string, data []byte, ctype str
 	resp, err := c.do(ctx, c.Chat, "POST", path, bytes.NewReader(data), ctype, true)
 	if err == nil || ctx.Err() != nil || c.ChatFallback.URL == "" || c.ChatFallback.URL == c.Chat.URL {
 		return resp, err
+	}
+	if c.BeforeFallback != nil {
+		if ferr := c.BeforeFallback(ctx); ferr != nil {
+			return nil, err
+		}
 	}
 	return c.do(ctx, c.ChatFallback, "POST", path, bytes.NewReader(withModel(data, c.ChatFallback.Model)), ctype, true)
 }

@@ -344,12 +344,27 @@ func runDaemon() {
 	os.MkdirAll(config.StateDir(), 0o700)
 	os.WriteFile(pidPath(), []byte(strconv.Itoa(os.Getpid())), 0o600)
 	children := llama.Children(cfg)
-	done := make(chan struct{}, len(children))
 	logf := func(f string, a ...any) { logger.Printf(f, a...) }
+	// A cloud brain with the local one as its fallback: the local brain holds no memory until a request
+	// falls back to it, and stops after ten idle minutes.
+	var backup *llama.Lazy
+	if cloud := !strings.Contains(cfg.Chat.URL, "127.0.0.1") && !strings.Contains(cfg.Chat.URL, "localhost"); cloud {
+		for i, c := range children {
+			if c.Name == "brain" && strings.Contains(cfg.ChatFallback.URL, ":"+strconv.Itoa(c.Port)) {
+				backup = &llama.Lazy{Child: c, Idle: 10 * time.Minute}
+				children = append(children[:i:i], children[i+1:]...)
+				break
+			}
+		}
+	}
+	done := make(chan struct{}, len(children))
 	for _, c := range children {
 		go func() { c.Run(ctx, logf); done <- struct{}{} }()
 	}
 	d := daemon.New(cfg, logger)
+	if backup != nil {
+		d.SetBackupBrain(func(rctx context.Context) error { return backup.Ensure(ctx, 45*time.Second, logf) })
+	}
 	d.LoadPrefs(filepath.Join(config.StateDir(), "prefs.json"))
 	go d.Run(ctx)
 	if cfg.HTTPPort > 0 {

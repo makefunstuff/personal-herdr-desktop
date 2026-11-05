@@ -792,7 +792,7 @@ func (d *Daemon) fire(r *reminder) {
 		}
 		time.Sleep(time.Second)
 	}
-	d.Say(spoken)
+	d.Say(d.flavor(spoken, 6*time.Second))
 }
 
 func (d *Daemon) listReminders() (string, string) {

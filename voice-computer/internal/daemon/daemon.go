@@ -79,6 +79,7 @@ type Daemon struct {
 	memStale     bool           // the memory changed: the next turn starts a session that knows it
 	convo        *convo.Store
 	sinceSummary int
+	sincePersona int // brain turns since the persona was last rewritten (persona.go)
 	lastLogAt    time.Time
 	fillerOn     bool      // a filler is being said: the answer waits for it
 	micBlocked   string    // why the mic gives only silence ("" while it works)
@@ -869,7 +870,12 @@ func (d *Daemon) fastTurn(gen int, f intent.Fast, released time.Time, tl turnLog
 	}
 	d.mu.Unlock()
 	if say != "" {
-		go d.Say(say)
+		go func() {
+			if sometimes(3) { // a command's outcome: now and then in its own words, never slower than a beat
+				say = d.flavor(say, 1500*time.Millisecond)
+			}
+			d.Say(say)
+		}()
 	}
 }
 
@@ -1136,6 +1142,11 @@ func (d *Daemon) addTurnLocked(t Turn) {
 		d.convo.Append(convo.Turn{At: t.At, You: t.You, Computer: t.Computer, Kind: d.lastKind(), Tools: tools})
 		if d.lastKind() == "brain" && t.You != "" {
 			go d.learn(t.You)
+			d.sincePersona++
+			if d.sincePersona >= personaEvery {
+				d.sincePersona = 0
+				go d.evolvePersona()
+			}
 		}
 		d.sinceSummary++
 		if d.sinceSummary >= 10 {
@@ -1523,6 +1534,9 @@ func (d *Daemon) readOutLater(text string) {
 // the owner may have edited the file), about 1500 characters, newest first.
 func (d *Daemon) computerSession() voice.SessionConfig {
 	sc := ComputerSession(d.cfg)
+	if p := personaNotes(); p != "" {
+		sc.Instructions += "\n\nWho you are with " + d.cfg.Owner + " (grown from your talks; be this, within the rules above):\n" + p
+	}
 	if d.mem != nil {
 		d.mem.Reload()
 		if m := d.mem.Prompt(1500); m != "" {
@@ -1555,4 +1569,9 @@ func ComputerSession(cfg config.Config) voice.SessionConfig {
 func (d *Daemon) localBrain() bool {
 	u := d.cfg.Chat.URL
 	return strings.Contains(u, "127.0.0.1") || strings.Contains(u, "localhost")
+}
+
+// SetBackupBrain makes the fallback brain start on demand (vc daemon passes the lazy local server).
+func (d *Daemon) SetBackupBrain(ensure func(ctx context.Context) error) {
+	d.voice.BeforeFallback = ensure
 }

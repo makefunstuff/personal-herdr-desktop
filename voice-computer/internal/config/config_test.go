@@ -42,7 +42,7 @@ func TestLoad(t *testing.T) {
 // The personality: a warm executive assistant; facts about the owner only from context, tools and memory.
 func TestInstructionsKeepThePersonality(t *testing.T) {
 	s := Instructions("Herdr", "Alex", ", and that an agent can find out")
-	for _, want := range []string{"You are Herdr, Alex's executive assistant inside Herdr", "warm, sharp and attentive",
+	for _, want := range []string{"You are Herdr, Alex's executive assistant inside Herdr", "warm, sharp, witty and a little unpredictable", "tease Alex lightly",
 		"personal helper", "two to four natural sentences", "up to five sentences", "at most one per answer", "never invent one", "style notes ask for shorter answers", "Wikipedia says", "call web_search", "never markdown", "one useful next step as a short question", "Use Alex's name now and then",
 		"Honesty comes first, but be useful", "never invent any of those", "context line", "your earlier conversations with Alex",
 		"your own knowledge may be out of date", "give your opinion and advice", "saying when you're unsure",

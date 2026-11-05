@@ -23,7 +23,9 @@ const learnPrompt = `You keep a voice assistant's memory of its owner, %[1]s. Fr
 	`is worth remembering for weeks: facts about %[1]s (their work, projects, people, tastes, plans, routines, ` +
 	`feelings that last) and how %[1]s wants the assistant to talk or behave. Write each as one short third-person ` +
 	`sentence using %[1]s's own words ("%[1]s's main project is homelab", "%[1]s likes short answers in the morning"). ` +
-	`Skip passing requests, commands to the computer, questions, small talk and anything already obvious. ` +
+	`Skip passing requests, commands to the computer, questions, small talk, what they're doing right now (which ` +
+	`space, what they're looking at), complaints about you, and anything already remembered. Most turns hold nothing: ` +
+	`then answer with empty lists. ` +
 	`Never keep passwords, keys or secrets. Answer with JSON only: {"facts": [...], "style": [...]}, empty lists when ` +
 	`there is nothing.`
 
@@ -64,7 +66,7 @@ func (d *Daemon) learn(you string) {
 	body := map[string]any{"model": d.cfg.Chat.Model, "stream": false, "max_tokens": 160, "temperature": 0.1,
 		"messages": []any{
 			map[string]any{"role": "system", "content": fmt.Sprintf(learnPrompt, d.cfg.Owner)},
-			map[string]any{"role": "user", "content": d.cfg.Owner + " said: " + you},
+			map[string]any{"role": "user", "content": "Already remembered (never repeat these, even reworded):\n" + knownNotes(d.mem) + "\n\n" + d.cfg.Owner + " said: " + you},
 		}}
 	raw, _ := json.Marshal(body)
 	resp, err := d.voice.Post(ctx, d.cfg.Chat, "/v1/chat/completions", bytes.NewReader(raw))
@@ -130,4 +132,18 @@ var passingRE = regexp.MustCompile(`(?i)\b(today|tonight|this evening|this morni
 // something that lasts.
 func passing(note, owner string) bool {
 	return passingRE.MatchString(note) || strings.HasPrefix(strings.ToLower(note), strings.ToLower(owner)+" said")
+}
+
+// knownNotes is what memory already holds, a line each ("(nothing yet)" when empty).
+func knownNotes(m *memory.Memory) string {
+	var b strings.Builder
+	for _, k := range []string{memory.Fact, memory.Style, memory.Correction} {
+		for _, x := range m.Items(k) {
+			b.WriteString("- " + x + "\n")
+		}
+	}
+	if b.Len() == 0 {
+		return "(nothing yet)"
+	}
+	return strings.TrimSpace(b.String())
 }

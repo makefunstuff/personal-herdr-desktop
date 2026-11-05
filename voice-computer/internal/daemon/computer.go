@@ -144,7 +144,7 @@ func (d *Daemon) runComputerTask(bin, task string) {
 		answer = lastSentences(answer, 2)
 	}
 	d.notify(answer)
-	_ = d.Say(answer)
+	_ = d.Say(d.flavor(answer, 6*time.Second))
 }
 
 // lastSentences keeps the end of an agent's report: its conclusion.

@@ -67,7 +67,11 @@ func (d *Daemon) genericHealth(ctx context.Context, full bool) (h healthInfo, sk
 		if e.name == "speech to text" {
 			continue // just checked
 		}
-		if err := d.voice.Ping(ctx, e.ep); errors.Is(err, voice.ErrRefused) {
+		err := d.voice.Ping(ctx, e.ep)
+		if err != nil && e.name == "chat" && d.cfg.ChatFallback.URL != "" && d.cfg.ChatFallback.URL != d.cfg.Chat.URL {
+			continue // a backup brain answers (started on demand when it's the local one)
+		}
+		if errors.Is(err, voice.ErrRefused) {
 			h.off, h.why = OffRefused, "The "+e.name+" endpoint refused the key"
 			return h, false
 		} else if err != nil {

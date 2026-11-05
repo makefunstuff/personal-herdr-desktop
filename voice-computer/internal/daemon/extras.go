@@ -636,7 +636,7 @@ func (d *Daemon) pomoEnded(ev pomo.Event) {
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
-	d.Say(say)
+	d.Say(d.flavor(say, 6*time.Second))
 }
 
 func init() {
