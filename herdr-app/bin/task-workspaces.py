@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One Herdr workspace per started Shepherdr 3.1 task, keot in step with herdr-task's lists.
+"""One Herdr workspace per started Shepherdr 3.1 task, kept in step with herdr-task's lists.
 
 Shepherdr 3.1 starts a task's agent as an hc child of its space's Assistant, with no tab, pane or
 Herdr space of its own ("a space can hold thousands of tasks"), so no sidebar can show it. This
@@ -8,7 +8,7 @@ task's worktree, under the space it belongs to, with the task's own tabs - Chat 
 conversation), Terminal (the live hc terminal itself, never a new one), Files, Changes and Pull
 request (this repo's px-files, px-changes, px-pr, which follow the space's folder).
 
-The desktop's spaces are herdr-core's "herdr-app" document, as Shepherdr 2.1's desktop-layout.py
+The desktop's spaces are herdr-core's "herdr-app" document, as Shepherdr 2.1's desktop-layout
 kept them: read and written over `herdr-core connect` (terminal.list, doc.get, doc.set). Only
 spaces whose id starts with sptask are ours; workspaces made by hand are never touched. A task's
 workspace is removed when its task is done, archived or gone.
@@ -17,6 +17,10 @@ A new workspace is written with no tabs first and given them a moment later: She
 (lib/coordinator.js watchNewSpaces) gives every new space an Assistant tab, and skips one with no
 tabs, so this way a task workspace never gets an Assistant. The tabs come once the tab bar has
 noted the space (shared.json's "coordinator.seen") or, with the window open, after a few seconds.
+
+While the window is open, a write from here is a layout change it didn't make: Herdr shows its
+"Layout changed elsewhere" notice (the document is shared by connected screens). It is only written
+when a task appears, goes or is renamed, never for a status or progress change.
 
 Writes ~/.config/herdr-app/task-workspaces.json for this repo's sidebars (px-spaces, px-agents):
 which workspace a task has, the space to nest it under, its id, status and progress.
