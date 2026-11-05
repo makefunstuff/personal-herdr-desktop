@@ -84,6 +84,10 @@ export default class Desk extends View {
   }
 
   async loadNotes() {
+    // Past midnight, a Desk that was showing today moves on to the new day.
+    const today = ymd(new Date());
+    if (this.today && today !== this.today && this.day === this.today) this.day = today;
+    this.today = today;
     try { this.note = await fs.readFile(`${NOTES()}/${this.day}.md`, "utf8"); } catch { this.note = null; }
     try { this.days = (await fs.readdir(NOTES())).filter((f) => /^\d{4}-\d\d-\d\d\.md$/.test(f)).map((f) => f.slice(0, 10)).sort().reverse().slice(0, 7); } catch { this.days = []; }
   }
@@ -262,9 +266,9 @@ export default class Desk extends View {
           .text_size(10).text_color(d === this.day ? t.accent : t.dim).cursor_pointer()
           .on_click((_e, cx) => { this.day = d; cx.spawn(async (cx) => { await this.loadNotes(); cx.notify(); }); }).child(d.slice(5))))))
       .children(rows.length ? rows : [div().py(4).text_size(11.5).text_color(t.dim).child(this.note === null ? "No notes yet today. Type one below." : "Empty.")])
-      .when(this.day === ymd(new Date()), (e) => e.child(h_flex().pt(6).items_center().border_1().border_color(t.border).bg(t.input)
+      .child(h_flex().pt(6).items_center().border_1().border_color(t.border).bg(t.input)
         .child(div().pl(8).pr(4).text_color(t.accent).child("›"))
-        .child(Input.new(this.input).flex_1().h(28).px(4).rounded(0).border_0().bg(t.input).text_size(12).text_color(t.foreground))));
+        .child(Input.new(this.input).flex_1().h(28).px(4).rounded(0).border_0().bg(t.input).text_size(12).text_color(t.foreground)));
   }
 
   render() {
