@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- personal-herdr-desktop: one Herdr workspace per started Shepherdr task, kept in step.
+     install.sh fills in HOMEDIR. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>dev.personal-herdr-desktop.task-workspaces</string>
+  <key>ProgramArguments</key><array>
+    <string>/usr/bin/python3</string>
+    <string>-I</string>
+    <string>HOMEDIR/.config/herdr-app/bin/task-workspaces.py</string>
+    <string>--every</string>
+    <string>3</string>
+  </array>
+  <key>EnvironmentVariables</key><dict>
+    <key>PATH</key><string>HOMEDIR/.local/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
+  <key>ThrottleInterval</key><integer>10</integer>
+  <key>ProcessType</key><string>Interactive</string>
+  <key>StandardErrorPath</key><string>HOMEDIR/Library/Logs/herdr-task-workspaces.log</string>
+  <key>StandardOutPath</key><string>HOMEDIR/Library/Logs/herdr-task-workspaces.log</string>
+</dict>
+</plist>

@@ -1,0 +1,14 @@
+[Unit]
+Description=Herdr task workspaces: one workspace per started Shepherdr task, kept in step (task-workspaces.py)
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 -I %h/.config/herdr-app/bin/task-workspaces.py --every 3
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=graphical-session.target

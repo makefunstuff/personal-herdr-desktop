@@ -28,6 +28,11 @@ All art and sounds are original and drawn as vectors, so they stay sharp on Reti
 - **Artifacts** in `herdr.doc/1` ([spec](herdr-app/shepherdr-doc/SPEC.md)): agents write JSON blocks, Herdr draws them
   natively, the stock `render.html` draws them on the web and phone.
 - `bin/shepherdr-desktop-sync.py` shows a Shepherdr's agents as Herdr spaces and tabs.
+- **Task workspaces** (`bin/task-workspaces.py`, a user service: `herdr-task-workspaces`): each started Shepherdr 3.x
+  task becomes a real Herdr workspace on its worktree, under the space of the repo it is from (the same place the
+  sidebar already puts worktrees). Its tabs are the task's Chat, its agent's live terminal (the one it runs in, no new
+  one), Files, Changes and Pull request; clicking it in the sidebar opens its Chat. It goes when the task is done,
+  archived or removed. Workspaces made by hand are never touched.
 - Other machines' Shepherdrs: `~/.config/herdr-app/shepherdr-sources.json` (see the example file).
 
 **Desk** (`mods/desk`, DESK button in the status bar): pomodoro timer with a pixel tomato, focus stats and a 14-day
@@ -105,7 +110,8 @@ Microsoft assets are fetched on your machine, never stored in a repo.
 
 ## Platforms
 
-Both: themes, layouts, mods, art, sounds, the document formats, the sync script, herdr-doc, typing sounds and the time
+Both: themes, layouts, mods, art, sounds, the document formats, the sync scripts (the user service `herdr-task-workspaces`
+for task workspaces), herdr-doc, typing sounds and the time
 tracker (macOS: Swift LaunchAgents in `macos/`, built with `swiftc`; allow herdr-keyclick under Input Monitoring and
 herdr-timetrack under Accessibility; `cmd-alt-k` mutes the clicks). macOS only: the voice computer (`Herdr Voice.app`,
 `afplay`/`rec`, `osascript`, Homebrew). Linux only: Omarchy theme. The

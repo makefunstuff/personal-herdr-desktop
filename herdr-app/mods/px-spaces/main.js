@@ -5,7 +5,7 @@
 
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { spaces, machines, panes, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, layout } from "herdr";
+import { spaces, machines, panes, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, layout, readTextFile, appHome } from "herdr";
 const GS = () => ({ workbench: "gw", fortress: "gf" })[shared("layout")] ?? "g";
 
 function find(node, id) {
@@ -26,7 +26,7 @@ function place(s, ps) {
   const tabs = new Set((s.tabs ?? []).map((c) => c.id));
   return ps.find((p) => tabs.has(p.tab) && p.cwd)?.cwd || s.folder;
 }
-const rowHeight = ({ tree }) => (tree ? 28 : 30);
+const rowHeight = ({ tree, task }) => (tree || task ? 28 : 30);
 const where = (s, ps) => JSON.stringify([s.machine ?? null, place(s, ps)]);
 const base = (path) => path.replace(/\/+$/, "").split("/").pop();
 // Changes made outside Herdr (an editor's save, a commit in another app): looked
@@ -63,12 +63,30 @@ export default class Spaces extends View {
     this.pressed = null;
     this.over = null;
     this.machines = [];
+    // Task workspaces (bin/task-workspaces.py's registry): the id of the workspace a started
+    // Shepherdr task has, its space, its status and progress. A task workspace is a real Herdr
+    // space in the worktree, filled with the task's Chat, Terminal, Files, Changes and PR tabs.
+    this.tasks = {};
+    this.loadTasks(cx);
+    cx.timer.every(3000, cx => this.loadTasks(cx));
     this.folded = new Set(JSON.parse(localStorage.getItem("machines.folded") ?? "[]"));
     this.refreshMachines(cx);
     cx.timer.every(15000, cx => this.refreshMachines(cx));
     // `git status` walks the whole tree, on another machine a process there:
     // only when its answer could have changed (see `due`).
     cx.timer.every(250, (cx) => this.checkNew(cx));
+  }
+
+  // The task workspaces the sync service keeps, as { [space id]: task }. Read now and then: a new
+  // task's workspace shows up within a few seconds and goes when the task is done.
+  loadTasks(cx) {
+    cx.spawn(async (cx) => {
+      let next = {};
+      try { next = JSON.parse((await readTextFile(`${appHome()}/task-workspaces.json`)) || "{}").tasks ?? {}; } catch {}
+      if (JSON.stringify(next) === JSON.stringify(this.tasks)) return;
+      this.tasks = next;
+      cx.notify();
+    });
   }
 
   checkNew(cx) {
@@ -207,20 +225,38 @@ export default class Spaces extends View {
     const sp = spaces(), ps = panes();
     const ready = (w) => this.shown.has(w.id) || where(w, ps) in this.git || Date.now() - (this.born[w.id] ??= Date.now()) > 1500;
     for (const w of sp) if (!this.shown.has(w.id) && ready(w)) this.shown.add(w.id);
-    const list = sp.map((w, i) => ({ w, i, g: this.git[where(w, ps)] ?? null })).filter((r) => this.shown.has(r.w.id));
+    const list = sp.map((w, i) => ({ w, i, g: this.git[where(w, ps)] ?? null, task: this.tasks[w.id] ?? null })).filter((r) => this.shown.has(r.w.id));
     const mains = new Set(list.filter((r) => r.g && !r.g.linked).map((r) => r.g.repo));
     const nested = (r) => r.g?.linked && mains.has(r.g.repo);
     const out = [];
+    const placedIds = new Set(); // spaces already in the list (a worktree is only listed once)
     const placed = new Set(); // repos whose worktrees are listed (under the first of its spaces)
     for (const r of list) {
       if (nested(r)) continue;
       out.push({ ...r, tree: null });
+      placedIds.add(r.w.id);
       if (!r.g || r.g.linked || placed.has(r.g.repo)) continue;
       placed.add(r.g.repo);
       const kids = list.filter((k) => nested(k) && k.g.repo === r.g.repo);
-      kids.forEach((k, n) => out.push({ ...k, tree: n === kids.length - 1 ? "└─" : "├─" }));
+      kids.forEach((k, n) => { out.push({ ...k, tree: n === kids.length - 1 ? "└─" : "├─" }); placedIds.add(k.w.id); });
     }
-    return out;
+    // A task's workspace belongs under the space of the checkout its worktree is from (the
+    // worktree pass above gets that), else under the space it was started from.
+    const extra = new Map(), loose = [];
+    for (const r of list) {
+      if (!r.task || placedIds.has(r.w.id)) continue;
+      const at = out.find((x) => x.w.id === (r.task.parent ?? r.task.space));
+      if (at) { if (!extra.has(at.w.id)) extra.set(at.w.id, []); extra.get(at.w.id).push(r); }
+      else loose.push(r);
+    }
+    const final = [];
+    for (const r of out) {
+      final.push(r);
+      const kids = extra.get(r.w.id) ?? [];
+      kids.forEach((k, n) => final.push({ ...k, task: k.task, tree: n === kids.length - 1 ? "└─" : "├─" }));
+    }
+    for (const r of loose) final.push({ ...r, tree: null });
+    return final;
   }
 
   // The rows, under a header per machine once one isn't this computer.
@@ -286,8 +322,12 @@ export default class Spaces extends View {
       .when(g.behind > 0, (el) => el.child(div().flex_none().text_color(t.ansi1).child(`\u2193${g.behind}`)));
   }
 
-  row({ w, i, g, tree }, t) {
+  row({ w, i, g, tree, task }, t) {
     const on = w.active;
+    const isTask = Boolean(task);
+    // A task workspace: its worker's own state (working, needs you, done) and how far it got.
+    const status = isTask ? (({ working: "working", blocked: "blocked", done: "done" })[task.status] ?? "idle") : w.status;
+    const led = isTask ? (t[status] ?? t.dim) : (w.status === "working" ? t.working : w.status === "blocked" ? t.blocked : w.status === "done" ? t.done : t.border);
     const colors = shared("space.colors") ?? {};
     const color = colors[w.id] ?? "ansi6";
     const fill = color.startsWith("#") ? color : (MARK[color] ?? t[color]);
@@ -295,7 +335,7 @@ export default class Spaces extends View {
       .relative()
       .id(`space-${w.id}`)
       .px(8)
-      .h(rowHeight({ tree }))
+      .h(rowHeight({ tree, task }))
       .flex_none()
       .justify_center()
       .rounded(0)
@@ -325,33 +365,52 @@ export default class Spaces extends View {
         this.pressed = null;
         this.over = null;
         if (from !== null && over === i && from !== i) run("space.move", { id: spaces()[from].id, index: i + 1 });
-        else if (from === i) run("space.select", { id: w.id });
+        else if (from === i) {
+          run("space.select", { id: w.id });
+          // A task's workspace opens on its Chat, whatever tab it was last left on.
+          if (task?.chat) run("tab.select", { id: task.chat });
+        }
         cx.notify();
       })
       .on_mouse_down("right", () => this.menu(w))
       .when(shared("layout") === "workbench", (el) => el.border_l(3).border_color(on ? t.accent : "#00000000"))
       .when(shared("layout") === "workbench", (el) => el.child(
-        // workbench: a numbered module slot: index cell, name in caps, status LED.
+        // workbench: a numbered module slot: index cell, name in caps, status LED. A task workspace
+        // takes the worktree row's shape: a branch, its id, title and progress.
         h_flex().gap(8).items_center()
-          .when(Boolean(tree), el => el.pl(26).child(svg(`mods/px-chrome/${GS()}/branch.svg`).size(12).text_color(t.dim)))
-          .when(!tree, el => el.child(h_flex().w(24).h(18).flex_none().items_center().justify_center().border_1()
+          .when(Boolean(tree) || isTask, el => el.pl(26).child(svg(`mods/px-chrome/${GS()}/branch.svg`).size(12).text_color(t.dim)))
+          .when(!tree && !isTask, el => el.child(h_flex().w(24).h(18).flex_none().items_center().justify_center().border_1()
             .border_color(on ? t.accent : t.border).bg(on ? t.accent : t.surface).text_size(10.5).font_semibold()
             .text_color(on ? t.accent_foreground : t.dim).child(String(i + 1).padStart(2, "0"))))
-          .child(div().flex_shrink(0).max_w(150).truncate().text_size(12.5).font_semibold().text_color(on ? t.accent : t.foreground).child(w.name.toUpperCase()))
-          .child(g ? this.gitTail(g, tree, w.name, t) : div().flex_1())
-          .child(div().size(7).flex_none().bg(w.status === "working" ? t.working : w.status === "blocked" ? t.blocked : w.status === "done" ? t.done : t.border))))
+          .when(!isTask, el => el.child(div().flex_shrink(0).max_w(150).truncate().text_size(12.5).font_semibold().text_color(on ? t.accent : t.foreground).child(w.name.toUpperCase())))
+          .when(isTask, el => el.child(div().flex_shrink(0).text_size(12.5).font_semibold().text_color(on ? t.accent : t.foreground).child(task.ref)))
+          .when(!isTask, el => el.child(g ? this.gitTail(g, tree, w.name, t) : div().flex_1()))
+          .when(isTask, el => el.child(this.taskTail(task, t)))
+          .child(div().size(7).flex_none().bg(led))))
       .when(shared("layout") !== "workbench", (el) => el.child(
         h_flex()
           .gap(9)
           .items_center()
-          .when(Boolean(tree), el => el.pl(22).child(svg(`mods/px-chrome/${GS()}/branch.svg`).size(13).text_color(t.dim)))
-          .when(!tree, el => el.child(h_flex().size(18).flex_none().rounded(0).bg(fill).items_center().justify_center().text_size(10.5).font_bold().text_color("#ffffff").child([...w.name][0]?.toUpperCase() ?? "?")))
-          .child(div().flex_shrink(0).max_w(150).truncate().text_color(t.foreground).child(w.name))
-          .child(g ? this.gitTail(g, tree, w.name, t) : div().flex_1()),
+          .when(Boolean(tree) || isTask, el => el.pl(22).child(svg(`mods/px-chrome/${GS()}/branch.svg`).size(13).text_color(t.dim)))
+          .when(!tree && !isTask, el => el.child(h_flex().size(18).flex_none().rounded(0).bg(fill).items_center().justify_center().text_size(10.5).font_bold().text_color("#ffffff").child([...w.name][0]?.toUpperCase() ?? "?")))
+          .when(!isTask, el => el.child(div().flex_shrink(0).max_w(150).truncate().text_color(t.foreground).child(w.name)))
+          .when(isTask, el => el.child(div().flex_shrink(0).text_color(on ? t.accent : t.foreground).child(task.ref)))
+          .when(!isTask, el => el.child(g ? this.gitTail(g, tree, w.name, t) : div().flex_1()))
+          .when(isTask, el => el.child(this.taskTail(task, t))),
       ));
   }
 
-  compact({ w, i }, t) {
+  // A task workspace's line after its id: the task's title, how far it got, and its worker's words.
+  taskTail(task, t) {
+    const pct = typeof task.progress === "number" ? `${task.progress}%` : null;
+    const left = typeof task.left === "number" ? `~${task.left}m` : null;
+    return h_flex().flex_1().min_w(0).gap(6).justify_end().items_center().text_size(11.5).text_color(t.dim)
+      .child(div().flex_1().min_w(0).truncate().tooltip(`${task.ref} \u00b7 ${task.title}${task.doing ? ` \u00b7 ${task.doing}` : ""}`).child(task.title ?? ""))
+      .when(Boolean(pct), el => el.child(div().flex_none().text_color(t.foreground).child(pct)))
+      .when(!pct && Boolean(left), el => el.child(div().flex_none().child(left)));
+  }
+
+  compact({ w, i, task }, t) {
     return h_flex()
       .id(`space-${w.id}`)
       .h(26)
@@ -360,7 +419,10 @@ export default class Spaces extends View {
       .gap(4)
       .when(w.active, (el) => el.bg(t.raised))
       .hover((s) => s.bg(t.hover))
-      .on_click(() => run("space.select", { id: w.id }))
+      .on_click(() => {
+        run("space.select", { id: w.id });
+        if (task?.chat) run("tab.select", { id: task.chat });
+      })
       .child(div().text_color(w.active ? t.foreground : t.muted).child(String(i + 1)))
       .child(div().text_color(tone(t, w.status)).child(glyph(w.status)));
   }

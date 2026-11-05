@@ -3,7 +3,7 @@
 
 import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { agents, terminals, panes, focused, spaces, run, theme, shared, setShared, setAgentOrder, openOverlay, closeOverlay, props, window, layout } from "herdr";
+import { agents, terminals, panes, focused, spaces, run, theme, shared, setShared, setAgentOrder, openOverlay, closeOverlay, props, window, layout, readTextFile, appHome } from "herdr";
 const GS = () => ({ workbench: "gw", fortress: "gf" })[shared("layout")] ?? "g";
 
 function find(node, id) {
@@ -76,7 +76,51 @@ export default class Agents extends View {
     // Each agent's last state and when it changed (ms), kept across restarts.
     this.changed = JSON.parse(localStorage.getItem("changed") ?? "{}");
     this.pins = JSON.parse(localStorage.getItem("pins") ?? "[]");
+    // Started Shepherdr tasks (bin/task-workspaces.py): a task's agent is an hc child of its
+    // space's Assistant, with no pane or tab, so agents() never lists it. Its workspace's
+    // registry does; the rows come from there.
+    this.tasks = {};
+    this.loadTasks(cx);
+    cx.timer.every(3000, (cx) => this.loadTasks(cx));
     cx.timer.every(30000, (cx) => cx.notify());
+  }
+
+  loadTasks(cx) {
+    cx.spawn(async (cx) => {
+      let next = {};
+      try { next = JSON.parse((await readTextFile(`${appHome()}/task-workspaces.json`)) || "{}").tasks ?? {}; } catch {}
+      if (JSON.stringify(next) === JSON.stringify(this.tasks)) return;
+      this.tasks = next;
+      cx.notify();
+    });
+  }
+
+  // The task a live task agent works on (its workspace's registry entry), or null.
+  taskFor(address) {
+    return Object.values(this.tasks).find((t) => t.terminal === address && t.live) ?? null;
+  }
+
+  // The space a task belongs to: where the sidebar nests its workspace.
+  taskSpace(t) {
+    const at = (id) => spaces().find((s) => s.id === id) ?? null;
+    return at(t.parent) ?? at(t.space) ?? null;
+  }
+
+  // Live task agents as agent rows: the task's id and title, its live status, the space it
+  // belongs to (where the sidebar nests its workspace), and its workspace to open.
+  taskAgents(all, listed) {
+    return Object.values(this.tasks)
+      .filter((t) => t.live && t.terminal && !listed.some((a) => a.address === t.terminal))
+      .map((t) => {
+        const k = all.find((x) => x.address === t.terminal) ?? {};
+        const space = this.taskSpace(t);
+        return { address: t.terminal, pane: null, space: space?.id ?? t.space ?? null, space_name: space?.name ?? "",
+          tab: null, tab_index: 0, tab_name: t.ref,
+          status: ({ working: "working", blocked: "blocked", done: "done" })[t.status] ?? "idle",
+          app: k.status?.app ?? null,
+          program: k.program ?? { key: "agent", name: t.agent ?? "agent", icon: null, tint: true, tile: null, color: null, shell: false, agent: true },
+          title: `${t.ref} ${t.title ?? ""}`.trim(), seq: 0, pinned: false, focused: false, task: t };
+      });
   }
 
   // Stamps agents whose state changed. Done and idle count as one: looking at a
@@ -159,9 +203,11 @@ export default class Agents extends View {
     run("terminal.peek", { terminal: addr });
   }
 
-  // Live sub-agents of `addr`, depth first, each with the tree lines in front of it.
+  // Live sub-agents of `addr`, depth first, each with the tree lines in front of it. A
+  // Shepherdr 3.1 task worker is a child of its space's Assistant but is a task: it shows as the
+  // task's row (taskAgents), with its id, title and workspace, not as a nameless child here.
   tree(all, addr, lead = []) {
-    const kids = all.filter((k) => k.parent === addr && k.state === "live");
+    const kids = all.filter((k) => k.parent === addr && k.state === "live" && !k.labels?.["herdr.task"]);
     return kids.flatMap((k, i) => {
       const last = i === kids.length - 1;
       return [
@@ -224,6 +270,17 @@ export default class Agents extends View {
     let list = agents();
     this.listed = new Map(list.map((a) => [a.address, a.status]));
     const all = terminals();
+    // A live task agent the app lists (its workspace's Terminal tab gives it a pane) reads as its
+    // task: the space it belongs to, its id and title, not the "Terminal" tab it runs in.
+    list = list.map((a) => {
+      const task = this.taskFor(a.address);
+      if (!task) return a;
+      const space = this.taskSpace(task);
+      return { ...a, task, space: space?.id ?? task.space ?? a.space, space_name: space?.name ?? a.space_name, title: `${task.ref} ${task.title ?? ""}`.trim() };
+    });
+    // Task agents with no pane at all (before their workspace exists): rows of their own.
+    list = [...list, ...this.taskAgents(all, list)];
+    this.listed = new Map(list.map((a) => [a.address, a.status]));
     const shown = focused()?.agent;
     const now = Date.now();
     this.track(list, now);
@@ -236,7 +293,7 @@ export default class Agents extends View {
     const pinned = this.pins.map((p) => list.find((a) => a.address === p)).filter(Boolean);
     const rest = list.filter((a) => !this.pins.includes(a.address));
     list = [...pinned, ...rest];
-    setAgentOrder(list.map((a) => a.address));
+    setAgentOrder(list.filter((a) => !a.task).map((a) => a.address));
 
     const withKids = (a, i) => {
       const subs = collapsed ? [] : this.tree(all, a.address);
@@ -276,6 +333,7 @@ export default class Agents extends View {
     // otherwise read the same.
     const tabs = spaces().flatMap(s => s.tabs);
     const label = (a) => {
+      if (a.task) return a.title;
       const tab = tabs.find(tab => tab.id === a.tab);
       return tab ? title(tab, lead(tab)) : a.title || a.program?.name || "";
     };
@@ -288,7 +346,8 @@ export default class Agents extends View {
 
     const row = (a, i, subs = []) => {
       const pic = icon(a.program, 16, t.foreground);
-      const more = detail.get(a.address);
+      // A task agent reads as its task (PHD-1 and its title), the space it belongs to after it.
+      const more = a.task ? a.space_name : detail.get(a.address);
       // An agent on another machine (`vps/t7`) says which.
       const machine = a.address.includes("/") ? a.address.split("/")[0] : null;
       if (collapsed) {
@@ -300,7 +359,7 @@ export default class Agents extends View {
           .items_center()
           .gap(4)
           .hover((s) => s.bg(t.hover))
-          .on_click(() => run("pane.focus", { pane: a.pane }))
+          .on_click(() => (a.task && !a.pane ? run("space.select", { id: a.task.id }) : run("pane.focus", { pane: a.pane })))
           .child(div().flex_1().min_w(0).whitespace_nowrap().text_right().text_color(t.muted).child(String(i + 1)))
           .child(h_flex().w(14).flex_none().items_center().justify_center().child(this.status(t, a, true)));
       }
@@ -327,7 +386,7 @@ export default class Agents extends View {
       // Under a space header the space goes without saying; an automatic tab number says nothing.
       // Without a space header above (priority, pinned) the row names its space.
       const full = byPriority || isPinned;
-      const name = full ? a.space_name || label(a) : more ?? (/^\d+$/.test(label(a)) ? a.program?.name || label(a) : label(a));
+      const name = a.task ? a.title : full ? a.space_name || label(a) : more ?? (/^\d+$/.test(label(a)) ? a.program?.name || label(a) : label(a));
       return h_flex()
         .id(`ag-${a.address}`)
         .px(8)
@@ -344,7 +403,7 @@ export default class Agents extends View {
           else if (this.hovered === a.address) this.hovered = null;
           cx.notify();
         })
-        .on_click(() => run("pane.focus", { pane: a.pane }))
+        .on_click(() => (a.task && !a.pane ? run("space.select", { id: a.task.id }) : run("pane.focus", { pane: a.pane })))
         .when(Boolean(pic), el => el.child(div().id(`agent-fold-${a.address}`)
           .when(subs.length > 0, el => el.on_click((_e, cx) => {
             cx.stop_propagation();
