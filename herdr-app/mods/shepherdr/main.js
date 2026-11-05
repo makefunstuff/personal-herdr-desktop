@@ -39,7 +39,7 @@ const SOURCES = [{ id: "local", name: "This computer", herdr: null, via: null, t
 const RANK = { blocked: 4, done: 3, working: 2, idle: 1 };
 const REASONS = { question: "Question for you", reply: "Waits for your reply", stopped: "Agent stopped" };
 const TASK_WORD = { needs: "NEEDS YOU", working: "WORKING", merging: "MERGING", ready: "READY", queued: "QUEUED", todo: "TO DO", done: "DONE" };
-// The panel's older status words, for the parts of it that group tasks by them.
+// This mod's internal status keys (dot(), OPEN, counts(), tasksView group by them), from 3.1's sections.
 const TASK_STATUS = { needs: "need", working: "work", merging: "merging", ready: "ready", queued: "queued", todo: "todo", done: "done" };
 const STARTING_MS = 90000;
 // Minutes left, as Shepherdr writes them under a task's dot: "6m", "<1m", "2h".
@@ -142,10 +142,12 @@ async function tasks3Snapshot(dir) {
   // Tasks panel finds them; their own reports too (OSC 7501). Only this computer's terminals: the
   // list is this computer's, and another machine's may carry the same label for the same folder and
   // id. A shell is what herdr-task leaves behind when the agent exits, not the agent (the panel drops it).
-  const byTask = new Map();
+  const byTask = new Map(), taskAddrs = new Set();
   for (const k of terminals() ?? []) {
     const key = k?.labels?.["herdr.task"];
-    if (!key || String(k.address ?? "").includes("/")) continue;
+    if (!key) continue;
+    taskAddrs.add(k.address);
+    if (String(k.address ?? "").includes("/")) continue;
     if (k.state !== "live" || k.program?.key === "shell" || k.program?.shell) continue;
     const a = shown.get(k.address);
     if (!byTask.has(key)) byTask.set(key, []);
@@ -174,7 +176,8 @@ async function tasks3Snapshot(dir) {
       tasks.push({ id: `${prefix}-${t.id}`, name: t.title, place: pid, status: TASK_STATUS[p.section] ?? p.section,
         section: p.section, statusWord: TASK_WORD[p.section] ?? String(p.section).toUpperCase(), why: p.why,
         sub: capital3(secondLine3(t, p, w, queued)), report: w, live: live.map((a) => a.address),
-        age: t.started ? ago3(t.started, Date.now(), false) : "", archived: t.archived ?? null, doneAt: t.done_at ?? null,
+        age: t.started ? ago3(t.started, Date.now(), false) : "", at: t.ready_at ?? t.started ?? 0,
+        archived: t.archived ?? null, doneAt: t.done_at ?? null,
         // No live agent: no address, so a click opens the Tasks list, not an ended terminal.
         agent: { chat: `${prefix}-${t.id}/Agent`, address: agent?.address ?? null },
         cli: agent?.cli ?? last?.agent ?? null, pr: t.pr ?? null,
@@ -188,7 +191,7 @@ async function tasks3Snapshot(dir) {
   // questions and failed automations, which this read-only snapshot of the task store can't see).
   const needs = tasks.filter((k) => !k.archived && k.section === "needs")
     .map((k) => ({ id: k.id, chat: taskChat(k), place: k.place, task: k.id, text: k.why ?? k.sub }));
-  return { places, tasks, machines: [], asks: {}, needs, artifacts: [], tasks3: true };
+  return { places, tasks, machines: [], asks: {}, needs, artifacts: [], tasks3: true, taskAddrs };
 }
 
 // ---- read-only view of the legacy (2.0) home: nothing here ever writes to it
@@ -434,7 +437,7 @@ export default class Shepherdr extends View {
   // "6h", "1h 20m", "45m"
   dur(min) { if (min == null) return null; const m = Math.max(0, Math.round(min)); return m >= 60 ? `${Math.floor(m / 60)}h${m % 60 ? ` ${m % 60}m` : ""}` : `${m}m`; }
   // a running task's own estimate, as "35% · 4h"
-  est(k) { const r = k.report; if (!r) return null; const parts = [r.progress != null ? `${r.progress}%` : null, r.eta != null ? (r.eta === 0 ? "<1m" : this.dur(r.eta)) : null].filter(Boolean); return parts.length ? parts.join(" · ") : null; }
+  est(k) { const r = k.report; if (!r || k.section === "needs") return null; const parts = [r.progress != null ? `${r.progress}%` : null, r.eta != null ? (r.eta === 0 ? "<1m" : this.dur(r.eta)) : null].filter(Boolean); return parts.length ? parts.join(" · ") : null; }
   // when a queued task should start: the longest remaining estimate among the tasks it waits for (chains followed)
   startsIn(s, k, seen = new Set()) {
     if (!k.after?.length || seen.has(k.id)) return null; seen.add(k.id);
@@ -990,14 +993,13 @@ export default class Shepherdr extends View {
       }
       const tasks = (s.tasks ?? []).filter((k) => !k.archived);
       const live = tasks.filter((k) => ["need", "ready", "merging", "work"].includes(k.status))
-        .sort((a, b) => ["need", "ready", "merging", "work"].indexOf(a.status) - ["need", "ready", "merging", "work"].indexOf(b.status));
+        .sort((a, b) => ["need", "ready", "merging", "work"].indexOf(a.status) - ["need", "ready", "merging", "work"].indexOf(b.status) || (b.at ?? 0) - (a.at ?? 0));
       const q = tasks.filter((k) => k.status === "queued" || k.status === "todo");
       run += live.filter((k) => k.status === "work" || k.status === "merging").length;
       wait += this.waiting(s).length; queued += q.length;
       // Herdr's own agents on this computer (hand-started ones): the ongoing work outside Shepherdr's tasks.
-      // A task's agents are its task nodes already (PHD-1 gives them a space and a herdr.task label).
-      const taskAgents = new Set(live.flatMap((k) => k.live ?? []));
-      const herdr = src.via ? [] : (agents() ?? []).filter((a) => !String(a.address ?? "").includes("/") && !taskAgents.has(a.address) && ["working", "blocked", "done"].includes(a.status))
+      // A task's agent is its task's (the herdr.task label), never a second, bare "agent" node of its own.
+      const herdr = src.via ? [] : (agents() ?? []).filter((a) => !String(a.address ?? "").includes("/") && !s.taskAddrs?.has(a.address) && ["working", "blocked", "done"].includes(a.status))
         .sort((a, b) => ["blocked", "working", "done"].indexOf(a.status) - ["blocked", "working", "done"].indexOf(b.status));
       run += herdr.filter((a) => a.status === "working").length; wait += herdr.filter((a) => a.status === "blocked").length;
       out.push(live.length || herdr.length ? h_flex().w_full().p(12).gap(12).flex_wrap()

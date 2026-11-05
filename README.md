@@ -23,8 +23,9 @@ All art and sounds are original and drawn as vectors, so they stay sharp on Reti
 - A panel (crook button in the tab bar) and a full tab: spaces with folding of quiet ones, what needs you (including
   open questions), chats with answer buttons, a task board per space (needs you / working / ready / backlog with
   start estimates / done / archived), estimates from agents' own reports.
-- **Operations Monitor**: machines as aligned meter cells (CPU, memory, disk, each GPU with its VRAM, Mac GPU), one
-  animated node per running task (pixel robot, progress conveyor, ETA), queue, ticker.
+- **Operations Monitor**: one animated node per Shepherdr 3.1 task (pixel robot, progress conveyor, its status in the
+  Tasks panel's words, the agent's step, % done and time left), a Ready node to accept, queue, ticker. Machines as
+  meter cells (CPU, memory, disk, GPUs) when a Shepherdr 2.1 source is configured.
 - **Artifacts** in `herdr.doc/1` ([spec](herdr-app/shepherdr-doc/SPEC.md)): agents write JSON blocks, Herdr draws them
   natively, the stock `render.html` draws them on the web and phone.
 - `bin/shepherdr-desktop-sync.py` shows a Shepherdr's agents as Herdr spaces and tabs.
