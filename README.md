@@ -32,7 +32,10 @@ All art and sounds are original and drawn as vectors, so they stay sharp on Reti
   task becomes a real Herdr workspace on its worktree, under the space of the repo it is from (the same place the
   sidebar already puts worktrees). Its tabs are the task's Chat, its agent's live terminal (the one it runs in, no new
   one), Files, Changes and Pull request; clicking it in the sidebar opens its Chat. It goes when the task is done,
-  archived or removed. Workspaces made by hand are never touched.
+  archived or removed (two passes, so a flicker never closes a space). Workspaces made by hand are never touched; the
+  service reads this computer's tasks only, and a task workspace follows its task, so renaming its rows by hand is
+  undone. While the window is open each of these writes is a layout change it didn't make, so Herdr shows its own
+  "Layout changed elsewhere" notice when a task appears, goes or is renamed (never for status or progress).
 - Other machines' Shepherdrs: `~/.config/herdr-app/shepherdr-sources.json` (see the example file).
 
 **Desk** (`mods/desk`, DESK button in the status bar): pomodoro timer with a pixel tomato, focus stats and a 14-day

@@ -411,6 +411,8 @@ export default class Spaces extends View {
   }
 
   compact({ w, i, task }, t) {
+    // Narrow sidebar: a task keeps its id and its worker's state, not the plain space's.
+    const status = task ? (({ working: "working", blocked: "blocked", done: "done" })[task.status] ?? "idle") : w.status;
     return h_flex()
       .id(`space-${w.id}`)
       .h(26)
@@ -423,8 +425,8 @@ export default class Spaces extends View {
         run("space.select", { id: w.id });
         if (task?.chat) run("tab.select", { id: task.chat });
       })
-      .child(div().text_color(w.active ? t.foreground : t.muted).child(String(i + 1)))
-      .child(div().text_color(tone(t, w.status)).child(glyph(w.status)));
+      .child(div().text_color(w.active ? t.foreground : t.muted).child(task?.ref ?? String(i + 1)))
+      .child(div().text_color(tone(t, status)).child(glyph(status)));
   }
 
   render() {

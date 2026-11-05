@@ -293,7 +293,9 @@ export default class Agents extends View {
     const pinned = this.pins.map((p) => list.find((a) => a.address === p)).filter(Boolean);
     const rest = list.filter((a) => !this.pins.includes(a.address));
     list = [...pinned, ...rest];
-    setAgentOrder(list.filter((a) => !a.task).map((a) => a.address));
+    // Task rows whose worker has a pane stay in the keyboard order; ones without a pane (before
+    // their workspace has it) have nothing to focus.
+    setAgentOrder(list.filter((a) => !a.task || a.pane).map((a) => a.address));
 
     const withKids = (a, i) => {
       const subs = collapsed ? [] : this.tree(all, a.address);

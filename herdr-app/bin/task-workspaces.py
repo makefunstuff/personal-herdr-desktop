@@ -11,7 +11,12 @@ request (this repo's px-files, px-changes, px-pr, which follow the space's folde
 The desktop's spaces are herdr-core's "herdr-app" document, as Shepherdr 2.1's desktop-layout
 kept them: read and written over `herdr-core connect` (terminal.list, doc.get, doc.set). Only
 spaces whose id starts with sptask are ours; workspaces made by hand are never touched. A task's
-workspace is removed when its task is done, archived or gone.
+workspace is removed once its task has been done, archived or gone for two passes in a row, and a
+list herdr-task was writing when it was read is never taken as empty, so a flicker never closes a
+space. Its folder, name and tabs follow the task: renaming them by hand is undone on the next pass.
+
+It reads this computer's ~/.herdr/tasks lists and this computer's window; a task in a space on
+another machine is not mirrored here.
 
 A new workspace is written with no tabs first and given them a moment later: Shepherdr's tab bar
 (lib/coordinator.js watchNewSpaces) gives every new space an Assistant tab, and skips one with no
@@ -56,7 +61,7 @@ def log(*parts):
 
 def rpc(calls, session=None):
     """herdr-core connect, one JSON-RPC request per line; returns the replies in order."""
-    env = {k: v for k, v in os.environ.items() if not k.startswith("HC_")}
+    env = dict(os.environ)
     if session:
         env["HC_SESSION"] = session
     lines = "".join(json.dumps({"jsonrpc": "2.0", "id": i, "method": m, "params": p}) + "\n" for i, (m, p) in enumerate(calls))
@@ -80,17 +85,26 @@ def hid(prefix, key, n=30):
 
 
 def read_tasks():
-    """herdr-task's lists on this computer: [{folder, name, prefix, slug, machine, tasks}]."""
-    lists = []
+    """herdr-task's lists on this computer: ([{folder, name, prefix, slug, machine, tasks}], {unreadable slugs}).
+
+    herdr-task rewrites a list on every status and progress change, so a file can be caught mid-write:
+    it must never read as "this list has no tasks". Those slugs come back separately and their tasks'
+    workspaces are left alone this pass.
+    """
+    lists, unreadable = [], set()
     for path in sorted(glob.glob(os.path.join(TASKS, "*.json"))):
+        slug = os.path.basename(path)[:-len(".json")]
         try:
             with open(path, encoding="utf-8") as f:
                 d = json.load(f)
         except (OSError, ValueError):
+            unreadable.add(slug)
             continue
         if isinstance(d, dict) and d.get("slug") and isinstance(d.get("tasks"), list):
             lists.append(d)
-    return lists
+        else:
+            unreadable.add(slug)
+    return lists, unreadable
 
 
 def text(v, n=200):
@@ -236,7 +250,7 @@ def term_blocks(node):
             return {"terminal": c["terminal"]}
         if c.get("mod") == "chat":
             p = c.get("props") or {}
-            return {"mod": "chat", "terminal": p.get("terminal"), "task": p.get("task")}
+            return {"mod": "chat", "terminal": p.get("terminal"), "task": p.get("task"), "title": p.get("title")}
         return {"mod": c.get("mod")}
     return [term_blocks(c) for c in node.get("children") or []]
 
@@ -269,14 +283,15 @@ def load_registry():
         return {}
 
 
-def save_registry(tasks, pending, old):
+def save_registry(tasks, pending, missing, ours, old):
     """Write what the sidebars read, only when it changed (a pass every few seconds)."""
     kept = {k: v for k, v in pending.items() if k in tasks}
-    if old.get("tasks") == tasks and old.get("pending") == kept:
+    gone = {k: v for k, v in missing.items() if k in ours}
+    if old.get("tasks") == tasks and old.get("pending") == kept and old.get("missing") == gone:
         return
     tmp = REGISTRY + ".new"
     with open(tmp, "w", encoding="utf-8") as f:
-        json.dump({"version": 1, "updated": int(time.time() * 1000), "tasks": tasks, "pending": kept}, f, indent=1)
+        json.dump({"version": 1, "updated": int(time.time() * 1000), "tasks": tasks, "pending": kept, "missing": gone}, f, indent=1)
         f.write("\n")
     os.replace(tmp, REGISTRY)
 
@@ -289,18 +304,21 @@ def one_pass(session=None, dry_run=False):
     value = doc["result"].get("value") or {"spaces": []}
     version = doc["result"].get("version", 0)
     spaces = value.get("spaces") or []
-    want = desired(read_tasks(), terminals, spaces)
+    lists, unreadable = read_tasks()
+    want = desired(lists, terminals, spaces)
     by_id = {t["id"]: t for t in want}
     have = {s["id"]: s for s in spaces if str(s.get("id", "")).startswith(PREFIX)}
     registry = load_registry()
+    old_tasks = registry.get("tasks") or {}
     pending = dict(registry.get("pending") or {})
+    missing = dict(registry.get("missing") or {})
     seen = seen_by_tab_bar()
     now = time.time()
     window = app_open()
     changed = False
     # Tabs for a workspace that already exists: at once when it's the same task, unless it is new.
     out_spaces = []
-    filled, created, removed = [], [], []
+    filled, created, removed, kept_old = [], [], [], {}
     for s in spaces:
         sid = s.get("id")
         t = by_id.get(sid)
@@ -308,9 +326,28 @@ def one_pass(session=None, dry_run=False):
             out_spaces.append(s)
             continue
         if not t:
+            # A task's space only goes once the task is gone from a list that was read whole, two
+            # passes in a row: herdr-task rewrites its list on every status change, so a file caught
+            # mid-write, a state settling or a worktree being made must never close a space. Two
+            # passes still leave the sidebar inside ten seconds.
+            slug = str((old_tasks.get(sid) or {}).get("key") or "").split("#")[0]
+            if slug in unreadable or (not slug and unreadable):
+                out_spaces.append(s)
+                if sid in old_tasks:
+                    kept_old[sid] = old_tasks[sid]
+                continue
+            n = missing.get(sid, 0) + 1
+            if n < 2:
+                missing[sid] = n
+                out_spaces.append(s)
+                if sid in old_tasks:
+                    kept_old[sid] = old_tasks[sid]
+                continue
+            missing.pop(sid, None)
             removed.append(s.get("name") or sid)
             changed = True
             continue
+        missing.pop(sid, None)
         tabs = tabs_of(t)
         if not (s.get("tabs") or []):
             # Written with no tabs a moment ago (see the top): fill them once the tab bar has seen it.
@@ -333,6 +370,7 @@ def one_pass(session=None, dry_run=False):
         # New: no tabs yet, so the tab bar's watchNewSpaces leaves it alone (no Assistant chat).
         out_spaces.append({"id": t["id"], "name": t["name"], "folder": t["folder"], "tabs": []})
         pending[t["id"]] = now
+        missing.pop(t["id"], None)
         created.append(t["ref"])
         changed = True
     if changed and not dry_run:
@@ -340,20 +378,24 @@ def one_pass(session=None, dry_run=False):
         if "error" in res:
             log("doc.set refused (another writer):", json.dumps(res.get("error"))[:200])
         else:
-            if created:
-                log("created:", ", ".join(created))
-            if filled:
-                log("tabs:", ", ".join(filled))
-            if removed:
-                log("removed:", ", ".join(removed))
+            for label, items in (("created", created), ("tabs", filled), ("removed", removed)):
+                if items:
+                    log(label + ":", ", ".join(items))
+    if changed and dry_run:
+        for label, items in (("would create", created), ("would fill", filled), ("would remove", removed)):
+            if items:
+                log(label + ":", ", ".join(items))
     # What the sidebars read: every task with a workspace, filled or still waiting for its tabs.
     tasks = {}
     for t in want:
         tasks[t["id"]] = {k: t[k] for k in ("id", "key", "ref", "title", "folder", "branch", "space", "parent",
                                             "terminal", "live", "agent", "status", "progress", "doing", "left", "started", "chat")}
-        tasks[t["id"]]["tabs"] = not (t["id"] in pending and t["id"] not in have)
+        tasks[t["id"]]["tabs"] = not (t["id"] in pending)
+    # A space kept for a pass while its task is only just gone keeps its task row meanwhile.
+    for sid, old in kept_old.items():
+        tasks.setdefault(sid, old)
     if not dry_run:
-        save_registry(tasks, pending, registry)
+        save_registry(tasks, pending, missing, have, registry)
     return {"created": created, "filled": filled, "removed": removed, "changed": changed, "tasks": tasks}
 
 
@@ -376,12 +418,14 @@ def main(argv):
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError:
-            pass  # another pass is running: it will see the same tasks
+            log("another pass is running; this one has nothing to do")  # it sees the same tasks
         else:
             try:
                 one_pass(session, dry)
             except Exception as e:  # keep going: the window, the core or a file may be busy a moment
                 log("error:", e)
+            finally:
+                fcntl.flock(lock, fcntl.LOCK_UN)  # between passes a one-shot run can have its turn
         if every is None:
             return 0
         time.sleep(max(0.5, every))
