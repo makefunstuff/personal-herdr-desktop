@@ -32,7 +32,7 @@ for f in $(cd "$SRC" && find themes layouts backgrounds pixel-icons workbench-ic
   put "$SRC/$f" "$DST/$f"
 done
 for f in "$SRC"/programs-*.json; do put "$f" "$DST/$(basename "$f")"; done
-chmod +x "$DST/bin/shepherdr-desktop-sync.py"
+chmod +x "$DST/bin/shepherdr-desktop-sync.py" "$DST/bin/task-workspaces.py"
 [ -f "$DST/shepherdr-sources.json" ] || cp "$SRC/shepherdr-sources.example.json" "$DST/shepherdr-sources.example.json"
 
 echo "== Herdr: mods"
@@ -208,6 +208,21 @@ if [ "$OS" = Darwin ]; then
   }
   build herdr-keyclick && agent herdr-keyclick
   build herdr-timetrack && [ "$TIMETRACK" = 1 ] && agent herdr-timetrack
+  # One Herdr workspace per started Shepherdr task (task-workspaces.py): on when this machine has
+  # Shepherdr 3.1's tasks mod. A second, plist-style agent() for this one: it runs python3, not a
+  # binary built above.
+  if [ -d "$DST/mods/tabs-tasks" ]; then
+    wsplist="$HOME/Library/LaunchAgents/dev.personal-herdr-desktop.task-workspaces.plist"
+    sed -e "s#HOMEDIR/.config/herdr-app#$DST#g" -e "s#HOMEDIR#$HOME#g" "$M/launchd/task-workspaces.plist" > "$wsplist.new"
+    if cmp -s "$wsplist.new" "$wsplist" && launchctl print "gui/$(id -u)/dev.personal-herdr-desktop.task-workspaces" >/dev/null 2>&1; then
+      rm "$wsplist.new"; launchctl kickstart -k "gui/$(id -u)/dev.personal-herdr-desktop.task-workspaces"
+    else
+      mv "$wsplist.new" "$wsplist"; launchctl bootout "gui/$(id -u)/dev.personal-herdr-desktop.task-workspaces" 2>/dev/null || true
+      for i in 1 2 3 4 5; do launchctl bootstrap "gui/$(id -u)" "$wsplist" 2>/dev/null && { echo "  task-workspaces: running (LaunchAgent)"; break; }; sleep 1; done
+    fi
+  else
+    echo "  task-workspaces: skipped (no Shepherdr 3.1 tasks mod in $DST/mods)"
+  fi
   # cmd-alt-k mutes the typing sounds (Shepherdr 3.x's tab bar runs herdr-typing-toggle), where it's free.
   [ -d "$DST/mods/tabs-tasks" ] && python3 - "$DST/keys.json" "$TS" <<'PY2'
 import json, os, shutil, sys
@@ -225,12 +240,27 @@ if [ "$OS" = Linux ]; then
   echo "== Linux: time tracker, typing sounds (Cherry MX Blue)"
   for f in herdr-timetrack herdr-keyclick herdr-typing-toggle; do put "$L/bin/$f" "$HOME/.local/bin/$f"; chmod +x "$HOME/.local/bin/$f"; done
   for u in herdr-keyclick herdr-timetrack; do put "$L/systemd/$u.service" "$HOME/.config/systemd/user/$u.service"; done
+  # Task workspaces need Shepherdr 3.1's tasks mod, and the app folder can be elsewhere (HERDR_APP_HOME):
+  # the unit's path is filled in here, never hardcoded to ~/.config/herdr-app.
+  if [ -d "$DST/mods/tabs-tasks" ]; then
+    u=herdr-task-workspaces; tmp=$(mktemp)
+    sed "s#%h/.config/herdr-app#$DST#g" "$L/systemd/$u.service" > "$tmp"
+    put "$tmp" "$HOME/.config/systemd/user/$u.service"; rm -f "$tmp"
+  else
+    echo "  task-workspaces: skipped (no Shepherdr 3.1 tasks mod in $DST/mods)"
+  fi
   if [ -f "$HOME/.config/hypr/hyprland.lua" ]; then
     put "$L/hypr/herdr-typing.lua" "$HOME/.config/hypr/herdr-typing.lua"
     grep -q 'require("hypr.herdr-typing")' "$HOME/.config/hypr/hyprland.lua" || { backup "$HOME/.config/hypr/hyprland.lua"; echo 'require("hypr.herdr-typing")' >> "$HOME/.config/hypr/hyprland.lua"; }
   fi
   systemctl --user daemon-reload
   systemctl --user enable --now herdr-keyclick.service
+  # restart, not just enable --now: a running service keeps the script it started with, and this one
+  # only picks up a fix when it is restarted.
+  if [ -d "$DST/mods/tabs-tasks" ]; then
+    systemctl --user enable herdr-task-workspaces.service
+    systemctl --user restart herdr-task-workspaces.service
+  fi
   [ "$TIMETRACK" = 1 ] && systemctl --user enable --now herdr-timetrack.service
   if command -v omarchy >/dev/null; then
     echo "== Omarchy: the workbench theme, icons and cursors, lock screen, screensaver, glyphs, sounds"
