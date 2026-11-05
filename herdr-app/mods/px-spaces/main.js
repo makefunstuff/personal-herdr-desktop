@@ -69,6 +69,7 @@ export default class Spaces extends View {
     // Shepherdr task has, its space, its status and progress. A task workspace is a real Herdr
     // space in the worktree, filled with the task's Chat, Terminal, Files, Changes and PR tabs.
     this.tasks = {};
+    this.chatWanted = null; // a task row clicked before its tabs were written (see openTask)
     this.loadTasks(cx);
     cx.timer.every(3000, cx => this.loadTasks(cx));
     this.folded = new Set(JSON.parse(localStorage.getItem("machines.folded") ?? "[]"));
@@ -87,8 +88,29 @@ export default class Spaces extends View {
       try { next = JSON.parse((await readTextFile(`${appHome()}/task-workspaces.json`)) || "{}").tasks ?? {}; } catch {}
       if (JSON.stringify(next) === JSON.stringify(this.tasks)) return;
       this.tasks = next;
+      this.openWantedChat();
       cx.notify();
     });
+  }
+
+  // A task row: its space, then its Chat. The service writes a task's space a moment before its
+  // tabs, so a click in between is kept and made good when they arrive (openWantedChat).
+  openTask(w, task) {
+    run("space.select", { id: w.id });
+    if (!task) return;
+    if (task.chat && task.tabs !== false) run("tab.select", { id: task.chat });
+    else this.chatWanted = { id: w.id, at: Date.now() };
+  }
+
+  openWantedChat() {
+    const want = this.chatWanted;
+    if (!want) return;
+    const t = this.tasks[want.id];
+    const ready = Boolean(t && t.tabs !== false && t.chat);
+    if (!ready && Date.now() - want.at < 60000) return;   // its tabs aren't written yet: wait
+    this.chatWanted = null;
+    // Only if the row the person clicked is still the space on screen.
+    if (ready && spaces().find((s) => s.id === want.id)?.active) run("tab.select", { id: t.chat });
   }
 
   checkNew(cx) {
@@ -370,12 +392,7 @@ export default class Spaces extends View {
         this.pressed = null;
         this.over = null;
         if (from !== null && over === i && from !== i) run("space.move", { id: spaces()[from].id, index: i + 1 });
-        else if (from === i) {
-          run("space.select", { id: w.id });
-          // A task's workspace opens on its Chat, whatever tab it was last left on. Until its
-          // tabs exist (the service fills them a few seconds after the space) there is none to open.
-          if (task?.chat && task.tabs !== false) run("tab.select", { id: task.chat });
-        }
+        else if (from === i) this.openTask(w, task);
         cx.notify();
       })
       .on_mouse_down("right", () => this.menu(w))
@@ -427,10 +444,7 @@ export default class Spaces extends View {
       .gap(4)
       .when(w.active, (el) => el.bg(t.raised))
       .hover((s) => s.bg(t.hover))
-      .on_click(() => {
-        run("space.select", { id: w.id });
-        if (task?.chat && task.tabs !== false) run("tab.select", { id: task.chat });
-      })
+      .on_click(() => this.openTask(w, task))
       .child(div().text_color(w.active ? t.foreground : t.muted).child(task?.ref ?? String(i + 1)))
       .child(div().text_color(tone(t, status)).child(glyph(status)));
   }

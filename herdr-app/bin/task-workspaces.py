@@ -466,7 +466,7 @@ def one_pass(session=None, dry_run=False):
             continue
         # New: no tabs yet, so the tab bar's watchNewSpaces leaves it alone (no Assistant chat).
         out_spaces.append({"id": t["id"], "name": t["name"], "folder": t["folder"], "tabs": []})
-        pending[t["id"]] = now
+        pending[t["id"]] = {"at": now, "window": window}
         missing.pop(t["id"], None)
         created.append(t["ref"])
         changed = True
