@@ -29,8 +29,8 @@ const plain = (md) => String(md ?? "").replace(/^#{1,6}\s+/gm, "").replace(/\*\*
 // (herdr: the Herdr machine showing its agents; via: the Herdr machine to run curl on, since Shepherdr listens on loopback).
 // The board from before 2.1 was migrated into this computer's Shepherdr on 2026-11-04. To look at its files again
 // read-only, add { id: "legacy", name: "Board before 2.1", herdr: null, via: null, legacy: `${home()}/.shepherdr-legacy` }.
-// Shepherdr 3.0 keeps its tasks in ~/.herdr/tasks/<slug>.json (herdr-task); this panel reads them (read-only) and
-// takes each task's live status from its agent. The full Shepherdr 3.0 window is the "shepherdr" layout.
+// Shepherdr 3.1 keeps its tasks in ~/.herdr/tasks/<slug>.json (herdr-task); this panel reads them (read-only) and
+// takes each task's live status from its agents. The full Shepherdr 3.1 window is the "shepherdr" layout.
 const SOURCES = [{ id: "local", name: "This computer", herdr: null, via: null, tasks3: `${home()}/.herdr/tasks` }];
 
 // ---- Shepherdr 3.1's tasks: what the Monitor shows of them, with the same rules and words as
@@ -133,15 +133,17 @@ function secondLine3(task, p, w, queued, now = Date.now()) {
 }
 
 async function tasks3Snapshot(dir) {
-  const files = (await fs.readdir(dir).catch(() => [])).filter((f) => f.endsWith(".json") && !f.startsWith("."));
+  const files = (await fs.readdir(dir).catch(() => [])).filter((f) => f.endsWith(".json"));
   const shown = new Map((agents() ?? []).map((a) => [a.address, a]));
   // A task's agents now: the live terminals labelled with its key (herdr.task "<slug>#<id>"), as the
-  // Tasks panel finds them; their own reports too (OSC 7501).
+  // Tasks panel finds them; their own reports too (OSC 7501). Only this computer's terminals: the
+  // list is this computer's, and another machine's may carry the same label for the same folder and
+  // id. A shell is what herdr-task leaves behind when the agent exits, not the agent (the panel drops it).
   const byTask = new Map();
   for (const k of terminals() ?? []) {
     const key = k?.labels?.["herdr.task"];
-    if (!key) continue;
-    if (k.state !== "live") continue;
+    if (!key || String(k.address ?? "").includes("/")) continue;
+    if (k.state !== "live" || k.program?.key === "shell" || k.program?.shell) continue;
     const a = shown.get(k.address);
     if (!byTask.has(key)) byTask.set(key, []);
     byTask.get(key).push({ address: k.address, status: a?.status ?? (RANK[k.status] ? k.status : null),
@@ -162,7 +164,10 @@ async function tasks3Snapshot(dir) {
       const own = live.map((a) => a.report).find((r) => typeof r?.progress === "number" && r.progress >= 0) ?? null;
       const w = report3(t, p.section, own ? { pct: own.progress, msg: own.msg || null } : null);
       const queued = p.section === "queued" ? queueReason3(d, t, running) : null;
-      const agent = live[0] ?? null, last = t.agents?.[t.agents.length - 1] ?? null;
+      // The agent a click opens: its blocked worker first, then any worker, as the Tasks panel's target();
+      // with none live, the one it last ran, as the panel opens its terminal too.
+      const agent = live.find((a) => a.role !== "reviewer" && a.status === "blocked") ?? live.find((a) => a.role !== "reviewer") ?? live[0] ?? null;
+      const last = t.agents?.[t.agents.length - 1] ?? null;
       tasks.push({ id: `${prefix}-${t.id}`, name: t.title, place: pid, status: TASK_STATUS[p.section] ?? p.section,
         section: p.section, statusWord: TASK_WORD[p.section] ?? String(p.section).toUpperCase(), why: p.why,
         sub: secondLine3(t, p, w, queued), report: w, live: live.map((a) => a.address),
@@ -280,7 +285,8 @@ export default class Shepherdr extends View {
     this.chat = null; this.sending = false; this.note = null; this.mine = new Set(); this.docs = {}; this.view = null;
     this.tick = 0;
     if (props()?.view === "monitor") cx.spawn(async (cx) => { for (;;) { await new Promise((ok) => cx.timer.after(240, ok)); this.tick++; cx.notify(); } });
-    if (props()?.view === "monitor") cx.spawn(async () => { for (;;) { if (this.state.local?.snap) await this.pollMacGpu(); await new Promise((ok) => cx.timer.after(5000, ok)); } });
+    // The mac GPUs feed a 2.1 source's machine cells; a 3.1-only Monitor has no machine health to show.
+    if (props()?.view === "monitor") cx.spawn(async () => { for (;;) { if (this.state.local?.snap && SOURCES.some((s) => !s.tasks3)) await this.pollMacGpu(); await new Promise((ok) => cx.timer.after(5000, ok)); } });
     this.input = InputState.new({ value: "", placeholder: "Message… (Enter sends)" });
     this.input.on("submit", (_e, cx) => cx.spawn(async (cx) => { await this.send(); cx.notify(); }));
     this.handle = cx.focus_handle();
@@ -847,6 +853,9 @@ export default class Shepherdr extends View {
     const word = k.statusWord ?? ({ need: "NEEDS YOU", work: "WORKING", merging: "MERGING", ready: "READY", queued: "QUEUED", todo: "TO DO", done: "DONE" })[st] ?? String(st).toUpperCase();
     const pct = r?.progress ?? null, left = r?.eta ?? null;
     const moving = (st === "work" || st === "merging") && !paused;
+    // A bare working node still shows its conveyor (as "--%"); a merging one has no report to show.
+    const bar = st === "work" || (st === "need" && Boolean(r));
+    const said = k.sub ?? r?.msg ?? null;
     const corner = (pos) => div().absolute().w(7).h(7).border_color(col)
       .when(pos.includes("t"), (e) => e.top(-1).border_t(2)).when(pos.includes("b"), (e) => e.bottom(-1).border_b(2))
       .when(pos.includes("l"), (e) => e.left(-1).border_l(2)).when(pos.includes("r"), (e) => e.right(-1).border_r(2));
@@ -864,13 +873,15 @@ export default class Shepherdr extends View {
         .child(h_flex().gap(10).items_start()
           .child(v_flex().p(3).bg(t.background).border_1().border_color(t.raised).child(this.sprite(st, paused)))
           .child(v_flex().flex_1().min_w(0).gap(4)
-            .child(h_flex().gap(6).items_center().child(this.cliIcon(k.cli)).child(div().flex_1().min_w(0).truncate().text_size(12.5).font_semibold().child(k.name)))
-            .child(div().h(32).text_size(11.5).text_color(k.sub ? t.foreground : t.dim).child(oneLine(k.sub ?? "no report yet", 80)))))
-        .when(pct != null || st === "work" || st === "merging", (e) => e.child(h_flex().gap(8).items_center()
+            .child(h_flex().gap(6).items_center().child(this.cliIcon(k.cli ?? k.agent?.cli)).child(div().flex_1().min_w(0).truncate().text_size(12.5).font_semibold().child(k.name)))
+            .child(div().h(32).text_size(11.5).text_color(said ? t.foreground : t.dim).child(oneLine(said ?? "no report yet", 80)))))
+        .when(bar, (e) => e.child(h_flex().gap(8).items_center()
           .child(this.seg(t, (pct ?? 0) / 100, 40, col, moving))
           .child(div().text_size(11).font_semibold().text_color(col).child(pct == null ? "--%" : `${pct}%`))))
         .child(h_flex().gap(10).text_size(10.5).text_color(t.dim)
-          .when(left != null, (e) => e.child(div().text_color(col).child(`LEFT ${short3(left).toUpperCase()}`)))
+          // As the Tasks panel's leftOf(): the minutes only while it works unpaused, not while it waits on you.
+          .when(left != null && st === "work" && !k.why, (e) => e.child(div().text_color(col).child(`LEFT ${short3(left).toUpperCase()}`)))
+          .when(Boolean(k.age), (e) => e.child(div().child(`AGE ${String(k.age).toUpperCase()}`)))
           .when(st === "ready", (e) => e.child(div().text_color(t.done).child("READY TO ACCEPT")))
           .when(Boolean(k.pr?.number), (e) => e.child(div().text_color(t.accent).child(`PR #${k.pr.number}`)))));
   }
@@ -992,11 +1003,16 @@ export default class Shepherdr extends View {
         })));
       if (q.length) out.push(v_flex().w_full().px(12).pb(10).gap(2)
         .child(div().text_size(10.5).font_semibold().text_color(t.dim).child(`QUEUE · ${q.length}`))
-        .children(q.slice(0, 12).map((k) => h_flex().gap(10).text_size(11)
-          .child(div().w(70).text_color(t.muted).child(k.id)).child(div().flex_1().min_w(0).truncate().child(k.name))
-          .child(div().text_color(t.dim).child(k.sub ?? (() => { const m = this.startsIn(s, k);
+        .children(q.slice(0, 12).map((k) => {
+          // What it waits for in Herdr's words ("after PHD-1", "Starts soon"), else its status ("To do");
+          // a 2.1 source's start estimate, which 3.1's panel doesn't show, keeps its old line.
+          const note = k.sub ?? (src.tasks3 ? String(k.statusWord ?? k.status).toUpperCase() : (() => { const m = this.startsIn(s, k);
             const open = (k.after ?? []).filter((a) => { const d = (s.tasks ?? []).find((x) => x.id === String(a).replace(/^.*:/, "")); return d && d.status !== "done"; });
-            return [m == null ? null : m === 0 ? "NEXT" : `STARTS ~${this.dur(m).toUpperCase()}`, open.length ? `AFTER ${open.join(", ")}` : null].filter(Boolean).join(" · ") || String(k.status).toUpperCase(); })())))));
+            return [m == null ? null : m === 0 ? "NEXT" : `STARTS ~${this.dur(m).toUpperCase()}`, open.length ? `AFTER ${open.join(", ")}` : null].filter(Boolean).join(" · ") || String(k.status).toUpperCase(); })());
+          return h_flex().gap(10).text_size(11)
+            .child(div().w(70).text_color(t.muted).child(k.id)).child(div().flex_1().min_w(0).truncate().child(k.name))
+            .child(div().text_color(t.dim).child(note));
+        })));
     }
     const top = h_flex().w_full().h(36).flex_none().px(12).gap(16).items_center().bg(t.chrome).border_b(1).border_color(t.accent)
       .child(div().text_color(t.accent).child(crook(14))).child(div().text_size(13).font_semibold().child("OPERATIONS MONITOR"))
