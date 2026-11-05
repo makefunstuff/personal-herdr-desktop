@@ -7,6 +7,8 @@ import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { spaces, machines, panes, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, layout, readTextFile, appHome } from "herdr";
 const GS = () => ({ workbench: "gw", fortress: "gf" })[shared("layout")] ?? "g";
+// The id prefix bin/task-workspaces.py gives the workspaces it keeps for started tasks.
+const TASK_PREFIX = "sptask";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -227,9 +229,13 @@ export default class Spaces extends View {
     const ready = (w) => this.shown.has(w.id) || where(w, ps) in this.git || Date.now() - (this.born[w.id] ??= Date.now()) > 1500;
     for (const w of sp) if (!this.shown.has(w.id) && ready(w)) this.shown.add(w.id);
     const all = sp.map((w, i) => ({ w, i, g: this.git[where(w, ps)] ?? null, task: this.tasks[w.id] ?? null })).filter((r) => this.shown.has(r.w.id));
-    // A task's workspace always nests by the service's parent, never as a worktree row: its folder
-    // may be a worktree, but it is the task's space and gets the task's row.
-    const list = all.filter((r) => !r.task), tasks = all.filter((r) => r.task);
+    // A task's workspace never reads as a space of its own. Without a task entry (a moment before
+    // the service writes one, or a space Herdr rebuilt from a leftover terminal label after a
+    // window restart) it would be an orphan at the top, so it is left out until it has its task
+    // row. A task row also waits for the parent space the service names: it is never top-level.
+    const known = new Set(sp.map((s) => s.id));
+    const list = all.filter((r) => !r.task && !String(r.w.id).startsWith(TASK_PREFIX));
+    const tasks = all.filter((r) => r.task && known.has(r.task.parent ?? r.task.space));
     const mains = new Set(list.filter((r) => r.g && !r.g.linked).map((r) => r.g.repo));
     const nested = (r) => r.g?.linked && mains.has(r.g.repo);
     const out = [];
@@ -242,11 +248,12 @@ export default class Spaces extends View {
       const kids = list.filter((k) => nested(k) && k.g.repo === r.g.repo);
       kids.forEach((k, n) => out.push({ ...k, tree: n === kids.length - 1 ? "└─" : "├─" }));
     }
-    const extra = new Map(), loose = [];
+    const extra = new Map();
     for (const r of tasks) {
       const at = out.find((x) => x.w.id === (r.task.parent ?? r.task.space));
-      if (at) { if (!extra.has(at.w.id)) extra.set(at.w.id, []); extra.get(at.w.id).push(r); }
-      else loose.push(r);
+      if (!at) continue;   // its parent isn't on screen (yet): no top-level fallback, next frame
+      if (!extra.has(at.w.id)) extra.set(at.w.id, []);
+      extra.get(at.w.id).push(r);
     }
     const final = [];
     for (const r of out) {
@@ -254,7 +261,6 @@ export default class Spaces extends View {
       const kids = extra.get(r.w.id) ?? [];
       kids.forEach((k, n) => final.push({ ...k, task: k.task, tree: n === kids.length - 1 ? "└─" : "├─" }));
     }
-    for (const r of loose) final.push({ ...r, tree: null });
     return final;
   }
 

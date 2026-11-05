@@ -13,7 +13,14 @@ kept them: read and written over `herdr-core connect` (terminal.list, doc.get, d
 spaces whose id starts with sptask are ours; workspaces made by hand are never touched. A task's
 workspace is removed once its task has been done, archived or gone for two passes in a row, and a
 list herdr-task was writing when it was read is never taken as empty, so a flicker never closes a
-space. Its folder, name and tabs follow the task: renaming them by hand is undone on the next pass.
+space. Its folder, name and tabs follow the task: renaming them by hand is undone on the next pass
+(the task's own five tabs come first; a tab someone added, an nvim from Changes say, is kept after
+them while it is there). Removing a workspace first unlabels its live terminals (herdr.space,
+herdr.tab): Herdr rebuilds a space from a labeled terminal, so without that a removal would never
+stick - the space would come back with an Assistant and be removed again, over and over. The
+programs keep running; only their place in the window goes. Should one still come back three
+times, it is left in the document and out of the sidebars for half an hour (said once in the
+log), so a stuck label can never turn into a write loop.
 
 It reads this computer's ~/.herdr/tasks lists and this computer's window; a task in a space on
 another machine is not mirrored here.
@@ -48,6 +55,7 @@ TASKS = os.path.join(HOME, ".herdr", "tasks")
 REGISTRY = os.path.join(APP_HOME, "task-workspaces.json")
 SHARED = os.path.join(APP_HOME, "shared.json")
 CORE = os.environ.get("HC_BIN") or "herdr-core"
+HC = os.environ.get("HC_CLI") or "hc"
 PREFIX = "sptask"
 # The tabs every task workspace gets, in this order. Chat first: a click opens it.
 CHAT, TERM, FILES, CHANGES, PR = "Chat", "Terminal", "Files", "Changes", "PR"
@@ -219,7 +227,19 @@ def desired(lists, terminals, spaces):
     return out
 
 
-def tabs_of(t):
+def coordinator_tab(tab):
+    """A chat tab the tab bar added for a space's Assistant: never part of a task's own tabs."""
+    def walk(node):
+        if not isinstance(node, dict):
+            return False
+        c = node.get("content") or {}
+        if c.get("mod") == "chat" and (c.get("props") or {}).get("role") == "coordinator":
+            return True
+        return any(walk(k) for k in node.get("children") or [])
+    return walk(tab.get("root"))
+
+
+def tabs_of(t, existing=()):
     """The task workspace's tabs, as the app's tab tree. Chat first: a click opens it."""
     tabs = []
     props = {"thread": True, "task": t["ref"], "title": t["title"], "key": t["key_ref"]}
@@ -237,7 +257,43 @@ def tabs_of(t):
         tid = hid("tb", f"{t['id']}:{name}", 30)
         tabs.append({"id": tid, "name": name, "root": {"id": tid, "type": "row",
                      "children": [{"id": hid("p", f"{t['id']}:{name}", 30), "type": "block", "content": c}]}})
+    # Tabs someone added to the workspace (an nvim opened from Changes, say): kept after the task's
+    # own, as they are, so the workspace never fights the window over a terminal it shows. A chat
+    # tab the tab bar made for an Assistant never stays.
+    ids = {tab["id"] for tab in tabs}
+    for tab in existing or []:
+        if tab.get("id") in ids or coordinator_tab(tab):
+            continue
+        ids.add(tab.get("id"))
+        tabs.append(tab)
     return tabs
+
+
+def clear_space_labels(sid, terminals, session=None):
+    """Unlabel the live terminals a space had, before the space goes.
+
+    A live terminal keeps herdr.space and herdr.tab when its space is removed, and Herdr then puts
+    the space back on its next look (and gives it an Assistant), so a removal could never stick.
+    The program itself keeps running; only its place in the window goes.
+    """
+    env = dict(os.environ)
+    if session:
+        env["HC_SESSION"] = session
+    out = []
+    for k in terminals:
+        if k.get("state") != "live" or (k.get("labels") or {}).get("herdr.space") != sid:
+            continue
+        try:
+            r = subprocess.run([HC, "label", k["address"], "herdr.space=", "herdr.tab="],
+                               capture_output=True, text=True, timeout=20, env=env)
+        except (OSError, subprocess.SubprocessError) as e:
+            log("could not unlabel", k["address"], ":", e)
+            continue
+        if r.returncode != 0:
+            log("could not unlabel", k["address"], ":", (r.stderr or r.stdout).strip()[:200])
+            continue
+        out.append(k["address"])
+    return out
 
 
 def same_tabs(old, new):
@@ -290,15 +346,18 @@ def load_registry():
         return {}
 
 
-def save_registry(tasks, pending, missing, ours, old):
+def save_registry(tasks, pending, missing, retired, ours, old):
     """Write what the sidebars read, only when it changed (a pass every few seconds)."""
     kept = {k: v for k, v in pending.items() if k in tasks}
     gone = {k: v for k, v in missing.items() if k in ours}
-    if old.get("tasks") == tasks and old.get("pending") == kept and old.get("missing") == gone:
+    now = int(time.time() * 1000)
+    ret = {k: v for k, v in retired.items() if now - (v.get("at") or 0) < 30 * 60000}
+    if old.get("tasks") == tasks and old.get("pending") == kept and old.get("missing") == gone and old.get("retired") == ret:
         return
     tmp = REGISTRY + ".new"
     with open(tmp, "w", encoding="utf-8") as f:
-        json.dump({"version": 1, "updated": int(time.time() * 1000), "tasks": tasks, "pending": kept, "missing": gone}, f, indent=1)
+        json.dump({"version": 1, "updated": int(time.time() * 1000), "tasks": tasks, "pending": kept,
+                   "missing": gone, "retired": ret}, f, indent=1)
         f.write("\n")
     os.replace(tmp, REGISTRY)
 
@@ -319,6 +378,7 @@ def one_pass(session=None, dry_run=False):
     old_tasks = registry.get("tasks") or {}
     pending = dict(registry.get("pending") or {})
     missing = dict(registry.get("missing") or {})
+    retired = dict(registry.get("retired") or {})
     seen = seen_by_tab_bar()
     now = time.time()
     window = app_open()
@@ -350,12 +410,33 @@ def one_pass(session=None, dry_run=False):
                 if sid in old_tasks:
                     kept_old[sid] = old_tasks[sid]
                 continue
+            # A space the window puts back right after every removal (it rebuilds one from a live
+            # terminal's herdr.space label) must not become a write loop. Unlabel first; if it still
+            # comes back three times, leave it in the document for half an hour and say so once.
+            prior = retired.get(sid) or {}
+            if prior.get("n", 0) >= 3 and now * 1000 - prior.get("at", 0) < 30 * 60000:
+                if not prior.get("logged"):
+                    log("space keeps coming back, leaving it alone for now:", sid)
+                    retired[sid] = dict(prior, logged=True)
+                out_spaces.append(s)
+                missing.pop(sid, None)
+                # No task row for it any more: the sidebars leave out a task space they have no
+                # task for, so the person stops seeing a task that is done.
+                continue
+            if dry_run:
+                log("would unlabel and remove:", s.get("name") or sid)
+            else:
+                labels = clear_space_labels(sid, terminals, session)
+                if labels:
+                    log("unlabelled:", ", ".join(labels))
+            retired[sid] = {"at": int(now * 1000), "n": prior.get("n", 0) + 1}
             missing.pop(sid, None)
             removed.append(s.get("name") or sid)
             changed = True
             continue
         missing.pop(sid, None)
-        tabs = tabs_of(t)
+        retired.pop(sid, None)
+        tabs = tabs_of(t, s.get("tabs"))
         if not (s.get("tabs") or []):
             # Written with no tabs a moment ago (see the top): fill them once the tab bar has noted
             # the space. A tab bar that writes no such list gets a few seconds from the moment the
@@ -413,7 +494,7 @@ def one_pass(session=None, dry_run=False):
     for sid, old in kept_old.items():
         tasks.setdefault(sid, old)
     if not dry_run and written:
-        save_registry(tasks, pending, missing, have, registry)
+        save_registry(tasks, pending, missing, retired, have, registry)
     return {"created": created, "filled": filled, "removed": removed, "changed": changed, "tasks": tasks}
 
 
