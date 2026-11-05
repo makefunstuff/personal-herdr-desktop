@@ -27,8 +27,13 @@ const flavorPrompt = `You are %[2]s, %[1]s's voice assistant, with a cheeky, unp
 var flavorMu sync.Mutex
 var recentOpenings []string
 
-// flavorModel: the cloud brain's quick model where there is one (DeepSeek's chat), else the brain's.
-func (d *Daemon) flavorModel() string {
+// flavorModel is quickModel (kept for flavor's callers).
+func (d *Daemon) flavorModel() string { return d.quickModel() }
+
+// quickModel is for vcd's own short requests (a summary, a page read, a note learned, a line flavored): the
+// cloud brain's quick, non-thinking model where there is one (DeepSeek's chat), else the brain's. A thinking
+// model spends a short request's tokens thinking and answers nothing.
+func (d *Daemon) quickModel() string {
 	if d.cfg.FlavorModel != "" {
 		return d.cfg.FlavorModel
 	}

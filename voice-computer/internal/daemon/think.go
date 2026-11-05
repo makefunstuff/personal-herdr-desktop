@@ -42,7 +42,7 @@ func (d *Daemon) think(ctx context.Context, line, text string, recent []Turn) st
 		fmt.Fprintf(&b, "Context: %s\n", line)
 	}
 	fmt.Fprintf(&b, "%s now says: %s", d.cfg.Owner, text)
-	body := map[string]any{"model": d.cfg.Chat.Model, "stream": false, "max_tokens": 80, "temperature": 0.3,
+	body := map[string]any{"model": d.quickModel(), "stream": false, "max_tokens": 80, "temperature": 0.3,
 		"stop": []string{"</think>"}, "chat_template_kwargs": map[string]any{"enable_thinking": true},
 		"messages": []any{
 			map[string]any{"role": "system", "content": fmt.Sprintf(thinkPrompt, d.cfg.Owner, d.cfg.Owner, strings.Join(names, ", "))},

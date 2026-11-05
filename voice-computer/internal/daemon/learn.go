@@ -63,7 +63,7 @@ func (d *Daemon) learn(you string) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	body := map[string]any{"model": d.cfg.Chat.Model, "stream": false, "max_tokens": 160, "temperature": 0.1,
+	body := map[string]any{"model": d.quickModel(), "stream": false, "max_tokens": 160, "temperature": 0.1,
 		"messages": []any{
 			map[string]any{"role": "system", "content": fmt.Sprintf(learnPrompt, d.cfg.Owner)},
 			map[string]any{"role": "user", "content": "Already remembered (never repeat these, even reworded):\n" + knownNotes(d.mem) + "\n\n" + d.cfg.Owner + " said: " + you},

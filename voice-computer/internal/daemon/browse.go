@@ -133,7 +133,7 @@ func (d *Daemon) readSource(ctx context.Context, question, name, where, text str
 	if question == "" {
 		question = "What's on this page? Say the main things."
 	}
-	body := map[string]any{"model": d.cfg.Chat.Model, "stream": false, "max_tokens": 220, "temperature": 0.2,
+	body := map[string]any{"model": d.quickModel(), "stream": false, "max_tokens": 220, "temperature": 0.2,
 		"messages": []any{
 			map[string]any{"role": "system", "content": fmt.Sprintf(browsePrompt, name, name)},
 			map[string]any{"role": "user", "content": "Page: " + where + "\nQuestion: " + question + "\n\nPage text:\n" + text},

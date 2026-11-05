@@ -685,7 +685,7 @@ func (d *Daemon) summarize(ctx context.Context, ag herdr.Agent, text string, lat
 	if latest {
 		prompt = latestPrompt
 	}
-	body := map[string]any{"model": d.cfg.Chat.Model, "stream": false, "max_tokens": 120, "temperature": 0.2,
+	body := map[string]any{"model": d.quickModel(), "stream": false, "max_tokens": 200, "temperature": 0.2,
 		"messages": []any{
 			map[string]any{"role": "system", "content": prompt},
 			map[string]any{"role": "user", "content": "The agent is " + ag.Label() + ", " + statusWords(ag.Status) + ". Its screen:\n\n" + text},
@@ -705,7 +705,11 @@ func (d *Daemon) summarize(ctx context.Context, ag herdr.Agent, text string, lat
 	if err := json.Unmarshal(resp, &out); err != nil || len(out.Choices) == 0 {
 		return "", fmt.Errorf("no summary")
 	}
-	return speech.Plain(thinkTagRE.ReplaceAllString(out.Choices[0].Message.Content, " ")), nil
+	sum := speech.Plain(thinkTagRE.ReplaceAllString(out.Choices[0].Message.Content, " "))
+	if i := strings.LastIndexAny(sum, ".!?"); i > 0 && i < len(sum)-1 { // cut off mid-sentence: end at the last full one
+		sum = sum[:i+1]
+	}
+	return sum, nil
 }
 
 // ---- reminders: in memory only (gone when vcd stops)
