@@ -3,9 +3,11 @@
 // author, age, size, checks, unresolved threads, and my last review. Click: the PR in the PR panel, in place (mods/px-pr:
 // threads, files, reactions, replies). REVIEW: an agent in this space reads the diff and drafts review comments, posting nothing.
 // A new review request posts a toast. Shares "reviews.summary" for the status bar.
+// Sorted newest first by default (Newest / Oldest / Updated); a PR you haven't opened yet is marked NEW, and one with
+// activity since you last opened it is marked UPDATED. What you opened and the sort live in ~/.herdr/reviews-state.json.
 import * as fs from "fs/promises";
 import { View, div } from "gpui-kit";
-import { v_flex, h_flex } from "gpui-base";
+import { v_flex, h_flex, InputState, Input } from "gpui-base";
 import { exec, theme, shared, setShared, run, spaces, focused, agents, hc, notify, playSound, home, window } from "herdr";
 // The desktop's opener for links and files: open on macOS, xdg-open on Linux.
 const OPENER = () => (window()?.platform === "macos" ? "open" : "xdg-open");
@@ -87,11 +89,38 @@ async function toWork(pr, text) {
   return `Sent to ${w.label} (your work, not ${CHORES}).`;
 }
 
+const STATE = () => `${home()}/.herdr/reviews-state.json`;
+const SORTS = [["new", "Newest"], ["old", "Oldest"], ["updated", "Updated"]];
+const alpha = (c, a) => `${String(c ?? "#000000").slice(0, 7)}${a}`;
+
 export default class Reviews extends View {
   init(_p, cx) {
     this.data = null; this.error = null; this.loading = false; this.note = null; this.open = {}; this.seen = null;
-    this.refresh(cx);
+    this.sort = "new"; this.opened = {}; this.firstRun = true;
+    this.query = InputState.new({ value: "", placeholder: "Filter: repo, title, author, #number" });
+    this.query.on("change", (_e, cx) => cx.notify());
+    cx.spawn(async (cx) => {
+      try { const j = JSON.parse(await fs.readFile(STATE(), "utf8")); this.sort = j.sort ?? "new"; this.opened = j.opened ?? {}; this.firstRun = false; } catch {}
+      this.refresh(cx);
+    });
     cx.timer.every(EVERY, (cx) => this.refresh(cx));
+  }
+
+  save() {
+    const all = new Set(this.data ? ["requested", "assigned", "reviewed", "mine"].flatMap((k) => this.data[k].map((p) => p.url)) : []);
+    if (this.data) for (const u of Object.keys(this.opened)) if (!all.has(u)) delete this.opened[u]; // closed PRs leave the file
+    fs.writeFile(STATE(), JSON.stringify({ sort: this.sort, opened: this.opened })).catch(() => {});
+  }
+  // NEW: never opened here. UPDATED: activity after you last opened it. Your own PRs are never NEW.
+  fresh(p, kind) {
+    const at = this.opened[p.url];
+    if (!at) return kind === "mine" ? null : "new";
+    return Date.parse(p.updatedAt) > at + 60000 ? "updated" : null;
+  }
+  markAll() {
+    const now = Date.now();
+    for (const k of ["requested", "assigned", "reviewed", "mine"]) for (const p of this.data?.[k] ?? []) this.opened[p.url] = now;
+    this.save();
   }
 
   refresh(cx) {
@@ -117,6 +146,8 @@ export default class Reviews extends View {
         const reviewed = list("reviewed").filter((p) => !seenNums.has(p.url) && !assigned.some((a) => a.url === p.url));
         this.data = { me, requested, assigned, reviewed, mine: list("mine"), at: Date.now() };
         this.error = null;
+        // first run ever: everything already open counts as seen, so only what arrives later is NEW
+        if (this.firstRun) { this.firstRun = false; this.markAll(); } else this.save();
         const urls = new Set(requested.map((p) => p.url));
         if (this.seen) {
           const fresh = requested.filter((p) => !this.seen.has(p.url));
@@ -150,78 +181,123 @@ export default class Reviews extends View {
     });
   }
 
-  // In place: the PR panel (same side panel) shows this PR, with a way back here.
+  // In place: the PR panel (same side panel) shows this PR, with a way back here. Opening it clears NEW/UPDATED.
   openPr(p) {
+    this.opened[p.url] = Date.now(); this.save();
     setShared("pr.target", { repo: p.repo, number: p.number, from: "reviews", at: Date.now() });
     run("layout.select", { stack: "panel-body", child: "pr" });
     run("layout.show", { id: "panel" });
   }
 
+  sorted(list, kind) {
+    const ts = (p) => Date.parse(this.sort === "updated" ? p.updatedAt : p.createdAt);
+    return [...list].sort((a, b) => (this.fresh(b, kind) ? 1 : 0) - (this.fresh(a, kind) ? 1 : 0) || (this.sort === "old" ? ts(a) - ts(b) : ts(b) - ts(a)));
+  }
+  matches(p) {
+    const q = this.query.value().trim().toLowerCase();
+    if (!q) return true;
+    return q.split(/\s+/).every((w) => `${p.repo} ${p.title} @${p.author} ${p.author} #${p.number} ${p.headRefName ?? ""}`.toLowerCase().includes(w));
+  }
+
   // ---- pieces
   link(t, id, label, fn, solid = false) {
-    return div().id(id).h(18).px(6).flex().items_center().flex_none().text_size(10).font_semibold()
-      .when(solid, (e) => e.bg(t.accent).text_color(t.accent_foreground)).when(!solid, (e) => e.text_color(t.dim).hover((s) => s.text_color(t.accent)))
+    return div().id(id).h(20).px(8).flex().items_center().flex_none().text_size(10).font_semibold().border_1()
+      .when(solid, (e) => e.bg(t.accent).border_color(t.accent).text_color(t.accent_foreground).hover((s) => s.opacity(0.85)))
+      .when(!solid, (e) => e.border_color(t.border).text_color(t.muted).hover((s) => s.border_color(t.accent).text_color(t.accent)))
       .cursor_pointer().on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => { cx.stop_propagation(); fn(cx); }).child(caps(label));
   }
-  bar(t, id, label, n, col) {
+  pill(t, text, col, filled = false) {
+    return div().flex_none().px(5).h(16).flex().items_center().text_size(9.5).font_semibold().border_1().border_color(col)
+      .when(filled, (e) => e.bg(col).text_color(t.accent_foreground)).when(!filled, (e) => e.bg(alpha(col, "18")).text_color(col)).child(caps(text));
+  }
+  bar(t, id, label, n, nNew, col) {
     const open = this.open[id] !== false;
-    return h_flex().id(`bar-${id}`).w_full().h(22).mt(10).flex_none().items_center().border_b(1).border_color(t.border).cursor_pointer()
+    return h_flex().id(`bar-${id}`).w_full().h(24).mt(12).flex_none().items_center().gap(6).border_b(1).border_color(t.border).cursor_pointer()
       .on_click((_e, cx) => { this.open[id] = !open; cx.notify(); })
-      .child(div().h_full().px(8).flex().items_center().bg(t.raised).text_size(10).font_semibold().text_color(t.foreground).child(caps(label)))
-      .child(div().px(8).text_size(10).font_semibold().text_color(col ?? t.dim).child(String(n)))
-      .child(div().flex_1()).child(div().px(6).text_size(10).text_color(t.dim).child(open ? "▾" : "▸"));
+      .child(div().w(12).text_size(10).text_color(t.dim).child(open ? "▾" : "▸"))
+      .child(div().text_size(10.5).font_semibold().text_color(t.foreground).child(caps(label)))
+      .child(div().text_size(10).font_semibold().text_color(col ?? t.dim).child(String(n)))
+      .when(nNew > 0, (e) => e.child(this.pill(t, `${nNew} new`, t.accent, true)))
+      .child(div().flex_1());
+  }
+  sortBar(t) {
+    return h_flex().flex_none().border_1().border_color(t.border).children(SORTS.map(([k, label]) =>
+      div().id(`sort-${k}`).h(20).px(7).flex().items_center().text_size(10).font_semibold().cursor_pointer()
+        .when(this.sort === k, (e) => e.bg(t.accent).text_color(t.accent_foreground))
+        .when(this.sort !== k, (e) => e.text_color(t.dim).hover((s) => s.text_color(t.foreground)))
+        .on_click((_e, cx) => { this.sort = k; this.save(); cx.notify(); }).child(caps(label))));
   }
 
   row(t, p, kind) {
-    const ck = p.checks === "SUCCESS" ? [t.done, "✓"] : p.checks === "FAILURE" || p.checks === "ERROR" ? [t.blocked, "✗"] : p.checks ? [t.working, "…"] : [t.dim, "–"];
+    const ck = p.checks === "SUCCESS" ? [t.done, "✓ checks"] : p.checks === "FAILURE" || p.checks === "ERROR" ? [t.blocked, "✗ checks"] : p.checks ? [t.working, "… checks"] : null;
     const size = p.additions + p.deletions, sizeCol = size > 800 ? t.blocked : size > 250 ? t.working : t.dim;
-    const mine = p.myReview ? ({ APPROVED: ["APPROVED", t.done], CHANGES_REQUESTED: ["CHANGES", t.blocked], COMMENTED: ["COMMENTED", t.muted] }[p.myReview] ?? [p.myReview, t.dim]) : null;
-    const decision = p.reviewDecision === "APPROVED" ? ["APPROVED", t.done] : p.reviewDecision === "CHANGES_REQUESTED" ? ["CHANGES REQ", t.blocked] : null;
-    return v_flex().id(`pr-${kind}-${p.url}`).w_full().mt(4).border_1().border_color(t.border).bg(t.chrome).cursor_pointer().hover((s) => s.border_color(t.accent))
+    const mine = p.myReview ? ({ APPROVED: ["you approved", t.done], CHANGES_REQUESTED: ["you: changes", t.blocked], COMMENTED: ["you commented", t.muted] }[p.myReview] ?? [p.myReview, t.dim]) : null;
+    const decision = p.reviewDecision === "APPROVED" ? ["approved", t.done] : p.reviewDecision === "CHANGES_REQUESTED" ? ["changes requested", t.blocked] : null;
+    const fresh = this.fresh(p, kind);
+    const updatedLater = Date.parse(p.updatedAt) - Date.parse(p.createdAt) > 3600000;
+    return h_flex().id(`pr-${kind}-${p.url}`).w_full().mt(6).items_stretch().border_1().border_color(fresh ? t.accent : t.border)
+      .bg(fresh === "new" ? alpha(t.accent, "12") : t.chrome).cursor_pointer().hover((s) => s.border_color(t.accent).bg(t.hover))
       .on_click(() => this.openPr(p))
-      .child(h_flex().w_full().h(22).items_center().border_b(1).border_color(t.border)
-        .child(div().h_full().px(6).flex().items_center().bg(t.raised).text_size(10).font_semibold().text_color(t.foreground).child(caps(p.repo.split("/")[1])))
-        .child(div().px(6).text_size(11).font_semibold().text_color(t.accent).child(`#${p.number}`))
-        .child(div().flex_1().min_w(0).truncate().text_size(12).text_color(t.foreground).child(p.title))
-        .when(p.isDraft, (e) => e.child(div().mx(4).px(4).border_1().border_color(t.border).text_size(9.5).text_color(t.dim).child("DRAFT"))))
-      .child(h_flex().w_full().px(6).py(3).gap(8).items_center().text_size(10.5).text_color(t.dim)
-        .child(div().child(kind === "mine" ? "you" : `@${p.author}`))
-        .child(div().child(`${ago(p.createdAt)} old`))
-        .child(div().text_color(sizeCol).child(`+${p.additions} −${p.deletions}`))
-        .child(div().text_color(ck[0]).font_semibold().child(`checks ${ck[1]}`))
-        .when(p.unresolved > 0, (e) => e.child(div().text_color(t.working).child(`${p.unresolved} open threads`)))
-        .when(Boolean(decision), (e) => e.child(div().text_color(decision[1]).font_semibold().child(decision[0])))
-        .when(Boolean(mine) && kind !== "mine", (e) => e.child(div().text_color(mine[1]).child(`you: ${mine[0]}`)))
-        .when(kind === "mine" && p.reviewers.length > 0, (e) => e.child(div().min_w(0).truncate().child(p.reviewers.map((r) => `${r.who} ${r.state === "APPROVED" ? "✓" : r.state === "CHANGES_REQUESTED" ? "✗" : "·"}`).join("  "))))
-        .child(div().flex_1())
-        .when(kind !== "mine", (e) => e.child(this.link(t, `rv-${p.url}`, "Review", (cx) => this.review(p, cx), true)))
-        .child(this.link(t, `op-${p.url}`, "GitHub", () => exec(OPENER(), [p.url]).catch(() => {}))));
+      .child(div().w(3).flex_none().when(Boolean(fresh), (e) => e.bg(t.accent)))
+      .child(v_flex().flex_1().min_w(0).px(8).py(6).gap(4)
+        .child(h_flex().w_full().gap(6).items_center()
+          .when(Boolean(fresh), (e) => e.child(this.pill(t, fresh === "new" ? "new" : "updated", t.accent, fresh === "new")))
+          .child(div().flex_1().min_w(0).truncate().text_size(12.5).text_color(t.foreground).when(Boolean(fresh), (e) => e.font_semibold()).child(p.title))
+          .when(p.isDraft, (e) => e.child(this.pill(t, "draft", t.dim))))
+        .child(h_flex().w_full().gap(8).items_center().text_size(10.5).text_color(t.dim)
+          .child(div().flex_none().text_color(t.muted).child(`${p.repo.split("/")[1]} #${p.number}`))
+          .child(div().flex_none().child(kind === "mine" ? "you" : `@${p.author}`))
+          .child(div().flex_none().child(updatedLater ? `${ago(p.createdAt)} · upd ${ago(p.updatedAt)}` : ago(p.createdAt)))
+          .child(div().flex_none().text_color(sizeCol).child(`+${p.additions} −${p.deletions}`))
+          .when(p.unresolved > 0, (e) => e.child(div().flex_none().text_color(t.working).child(`💬 ${p.unresolved}`)))
+          .when(kind === "mine" && p.reviewers.length > 0, (e) => e.child(div().min_w(0).truncate().child(p.reviewers.map((r) => `${r.who} ${r.state === "APPROVED" ? "✓" : r.state === "CHANGES_REQUESTED" ? "✗" : "·"}`).join("  ")))))
+        .child(h_flex().w_full().gap(4).items_center()
+          .when(Boolean(ck), (e) => e.child(this.pill(t, ck[1], ck[0])))
+          .when(Boolean(decision), (e) => e.child(this.pill(t, decision[0], decision[1])))
+          .when(Boolean(mine) && kind !== "mine", (e) => e.child(this.pill(t, mine[0], mine[1])))
+          .child(div().flex_1())
+          .when(kind !== "mine", (e) => e.child(this.link(t, `rv-${p.url}`, "Review", (cx) => this.review(p, cx), true)))
+          .child(this.link(t, `op-${p.url}`, "GitHub", () => exec(OPENER(), [p.url]).catch(() => {})))));
   }
 
   render(cx) {
     const t = theme(), d = this.data;
     const body = v_flex().id("reviews-body").flex_1().min_h(0).overflow_y_scrollbar().px(10).pb(12);
+    let nNewAll = 0;
     if (!d) body.child(div().pt(12).text_size(12).text_color(this.error ? t.blocked : t.dim).child(this.error || "Asking GitHub…"));
     else {
       const sections = [["requested", "Waiting for my review", d.requested, d.requested.length ? t.accent : t.done],
         ["assigned", "Assigned to me", d.assigned, t.muted], ["reviewed", "I reviewed, still open", d.reviewed, t.muted], ["mine", "My pull requests", d.mine, t.muted]];
-      for (const [id, label, list, col] of sections) {
-        if (!list.length && id !== "requested") continue;
-        body.child(this.bar(t, id, label, list.length, col));
+      const q = this.query.value().trim();
+      let shown = 0;
+      for (const [id, label, all, col] of sections) {
+        const list = all.filter((p) => this.matches(p));
+        const nNew = list.filter((p) => this.fresh(p, id)).length; nNewAll += nNew;
+        shown += list.length;
+        if (!list.length && (id !== "requested" || q)) continue;
+        body.child(this.bar(t, id, label, list.length, nNew, col));
         if (this.open[id] === false) continue;
-        if (!list.length) body.child(div().mt(6).text_size(11).text_color(t.dim).child("Nothing waits for your review."));
-        // oldest waiting first: what has waited longest is reviewed next
-        for (const p of [...list].sort((a, b) => (id === "mine" ? (b.updatedAt > a.updatedAt ? 1 : -1) : (a.createdAt > b.createdAt ? 1 : -1)))) body.child(this.row(t, p, id));
+        if (!list.length) body.child(div().mt(8).text_size(11).text_color(t.dim).child("Nothing waits for your review."));
+        // NEW/UPDATED first, then by the chosen order
+        for (const p of this.sorted(list, id)) body.child(this.row(t, p, id));
       }
+      if (q && !shown)
+        body.child(div().pt(12).text_size(11).text_color(t.dim).child(`No pull request matches “${q}”.`));
     }
+    if (this.error && d) body.child(div().pt(8).text_size(11).text_color(t.blocked).child(this.error));
     return v_flex().id("reviews").size_full().min_h(0).overflow_hidden().bg(t.surface).border_1().border_color(t.border).text_color(t.foreground).text_size(13)
-      .child(h_flex().h(42).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)
+      .child(h_flex().h(42).flex_none().px(12).gap(8).items_center().border_b(1).border_color(t.border)
         .child(div().font_semibold().child(caps("Reviews")))
-        .when(Boolean(d), (e) => e.child(div().px(5).py(1).border_1().border_color(d.requested.length ? t.accent : t.border).text_size(10)
-          .text_color(d.requested.length ? t.accent : t.muted).child(`${d.requested.length} waiting`)))
+        .when(Boolean(d), (e) => e.child(this.pill(t, `${d.requested.length} waiting`, d.requested.length ? t.accent : t.muted)))
+        .when(nNewAll > 0, (e) => e.child(div().id("rv-markall").text_size(10).text_color(t.accent).cursor_pointer().hover((s) => s.text_color(t.foreground))
+          .on_click((_e, cx) => { this.markAll(); cx.notify(); }).child(caps("mark all seen"))))
         .child(div().flex_1())
         .child(div().id("rv-refresh").text_size(10).text_color(t.dim).cursor_pointer().hover((s) => s.text_color(t.foreground)).on_click((_e, cx) => this.refresh(cx))
-          .child(this.loading ? caps("refreshing…") : d ? caps(`${ago(new Date(d.at).toISOString())} ago · refresh`) : caps("refresh"))))
+          .child(this.loading ? caps("refreshing…") : d ? caps(`${ago(new Date(d.at).toISOString())} ago ↻`) : caps("refresh"))))
+      .child(h_flex().flex_none().px(10).py(6).gap(8).items_center().border_b(1).border_color(t.border)
+        .child(h_flex().flex_1().min_w(0).h(22).px(6).items_center().border_1().border_color(t.border).bg(t.input)
+          .child(Input.new(this.query).flex_1().h(20).px(0).rounded(0).border_0().bg(t.input).text_size(11.5).text_color(t.foreground)))
+        .child(this.sortBar(t)))
       .when(Boolean(this.note), (el) => el.child(div().px(12).py(4).text_size(11).text_color(t.accent).child(this.note)))
       .child(body);
   }
