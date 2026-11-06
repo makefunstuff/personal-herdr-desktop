@@ -107,6 +107,7 @@ export default class Reviews extends View {
   }
 
   save() {
+    if (!this.data) return;
     const all = new Set(this.data ? ["requested", "assigned", "reviewed", "mine"].flatMap((k) => this.data[k].map((p) => p.url)) : []);
     if (this.data) for (const u of Object.keys(this.opened)) if (!all.has(u)) delete this.opened[u]; // closed PRs leave the file
     fs.writeFile(STATE(), JSON.stringify({ sort: this.sort, opened: this.opened })).catch(() => {});
@@ -182,11 +183,13 @@ export default class Reviews extends View {
   }
 
   // In place: the PR panel (same side panel) shows this PR, with a way back here. Opening it clears NEW/UPDATED.
-  openPr(p) {
-    this.opened[p.url] = Date.now(); this.save();
+  openPr(p, cx) {
     setShared("pr.target", { repo: p.repo, number: p.number, from: "reviews", at: Date.now() });
     run("layout.select", { stack: "panel-body", child: "pr" });
     run("layout.show", { id: "panel" });
+    // seen once opened (after the switch, so nothing here can stop it)
+    try { this.opened[p.url] = Date.now(); this.save(); } catch {}
+    cx?.notify();
   }
 
   sorted(list, kind) {
@@ -237,7 +240,7 @@ export default class Reviews extends View {
     const updatedLater = Date.parse(p.updatedAt) - Date.parse(p.createdAt) > 3600000;
     return h_flex().id(`pr-${kind}-${p.url}`).w_full().mt(6).items_stretch().border_1().border_color(fresh ? t.accent : t.border)
       .bg(fresh === "new" ? alpha(t.accent, "12") : t.chrome).cursor_pointer().hover((s) => s.border_color(t.accent).bg(t.hover))
-      .on_click(() => this.openPr(p))
+      .on_click((_e, cx) => this.openPr(p, cx))
       .child(div().w(3).flex_none().when(Boolean(fresh), (e) => e.bg(t.accent)))
       .child(v_flex().flex_1().min_w(0).px(8).py(6).gap(4)
         .child(h_flex().w_full().gap(6).items_center()

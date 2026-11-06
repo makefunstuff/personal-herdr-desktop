@@ -1,6 +1,7 @@
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, Scrollbar, v_virtual_list } from "gpui-base";
 import { spaces, panes, focused, exec, readTextFile, watchFolder, theme, settings, agents, hc, shared, setShared } from "herdr";
+import { langOf, tokens, colours } from "./hl.js";
 // The workbench layout writes its headings and labels in capitals (SPACES, AGENTS, DESK ...).
 const caps = (x) => (shared("layout") === "workbench" ? String(x).toUpperCase() : x);
 
@@ -174,6 +175,18 @@ export default class Changes extends View {
 
   setLines(lines) {
     this.rows = diffRows(lines);
+    // Syntax colours by the file's language, worked out once per diff: the old side ("-" and context)
+    // and the new side ("+" and context) each carry their own state (a block comment, a long string).
+    const lang = langOf(this.open);
+    if (lang) {
+      let olds = {}, news = {};
+      for (const r of this.rows) {
+        if (r.kind === "@") { olds = {}; news = {}; continue; }
+        if (r.kind === "-") r.tokens = tokens(r.text, lang, olds);
+        else if (r.kind === "+") r.tokens = tokens(r.text, lang, news);
+        else if (r.kind === " ") { tokens(r.text, lang, olds); r.tokens = tokens(r.text, lang, news); }
+      }
+    }
     this.diffWidth = Math.max(300, ...lines.map(line => line.length * 7 + 50));
   }
 
@@ -312,7 +325,13 @@ export default class Changes extends View {
         .when(number !== undefined && kind !== "-", (e) => e.hover((s) => s.text_color(t.accent).bg(t.raised))
           .on_click((_e, cx) => { cx.stop_propagation(); this.openInNvim(this.open, number, cx); }))
         .child(number === undefined ? "" : String(number)))
-      .child(div().flex_1().min_w(0).truncate().child(text));
+      .child(row.tokens ? this.codeLine(row.tokens, t, i) : div().flex_1().min_w(0).truncate().child(text));
+  }
+
+  codeLine(toks, t, i) {
+    const col = (this.hlFor === t ? this.hl : (this.hlFor = t, this.hl = colours(t)));
+    return h_flex().id(`dc-${i}`).flex_1().min_w(0).overflow_hidden().whitespace_nowrap()
+      .children(toks.map(([text, kind]) => div().flex_none().whitespace_nowrap().text_color(kind ? col[kind] ?? t.foreground : t.foreground).when(kind === "com", (e) => e.italic()).child(text)));
   }
 
   render(cx) {
