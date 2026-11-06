@@ -34,6 +34,13 @@ function age(readAt) {
   return m < 24 * 60 ? `${Math.floor(m / 60)}h old` : `${Math.floor(m / 1440)}d old`;
 }
 
+// Why a reading failed, in words: Herdr gives a mod's runtime room for a fixed number of outstanding
+// host tasks, and after many reloads of many mods it can run out — then no timer or call will start.
+const whyNot = (e) => {
+  const m = String(e?.message ?? e ?? "").split("\n")[0].trim();
+  return /outstanding host task/i.test(m) ? "Herdr is out of room for its mods: reopen the window" : m || "herdr-usage didn't answer";
+};
+
 const hhmm = (at) => {
   const d = new Date(at * 1000);
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
@@ -44,14 +51,31 @@ export default class Usage extends View {
     this.data = null;
     this.error = null;
     this.loading = false;
-    cx.timer.every(EVERY, (cx) => this.refresh(cx, false));
-    this.refresh(cx, false);
+    // Without the timer the limits stand still; the block still draws with the reason, never nothing.
+    try {
+      cx.timer.every(EVERY, (cx) => this.refresh(cx, false));
+      this.refresh(cx, false);
+    } catch (e) {
+      this.loading = false;
+      this.error = whyNot(e);
+    }
   }
 
   refresh(cx, fresh) {
     if (this.loading) return;
     this.loading = true;
     cx.notify();
+    try {
+      this.fetch(cx, fresh);
+    } catch (e) {
+      this.loading = false;
+      this.error = whyNot(e);
+      cx.notify();
+    }
+  }
+
+  // The read itself, in its own task: a runtime that can't start one is reported, not thrown.
+  fetch(cx, fresh) {
     cx.spawn(async (cx) => {
       let r;
       const bin = `${home()}/.local/share/herdr-usage/herdr-usage`, args = fresh ? ["limits", "--fresh"] : ["limits"];

@@ -31,7 +31,15 @@ df -P -l -x tmpfs -x devtmpfs -x efivarfs -x overlay -x squashfs 2>/dev/null | t
 command -v nvidia-smi >/dev/null && nvidia-smi --query-gpu=index,utilization.gpu,memory.used,memory.total,temperature.gpu --format=csv,noheader,nounits 2>/dev/null | grep -E '^[0-9]' | sed 's/^/gpu /'
 for f in /sys/class/drm/card[0-9]/device/gpu_busy_percent; do [ -r "$f" ] && echo "amd \${f#/sys/class/drm/card} $(cat "$f")"; done
 for c in /sys/class/drm/card[0-9]; do r="$c/gt/gt0/rc6_residency_ms"; [ -r "$r" ] && [ ! -r "$c/device/gpu_busy_percent" ] && echo "intel \${c#/sys/class/drm/card} $(cat "$r") $(date +%s%3N) $(cat "$c/device/device")"; done
+true
 `;
+
+// Why a reading failed, in words: Herdr gives a mod's runtime room for a fixed number of outstanding
+// host tasks, and after many reloads of many mods it can run out — then no timer or call will start.
+const whyNot = (e) => {
+  const m = String(e?.message ?? e ?? "").split("\n")[0].trim();
+  return /outstanding host task/i.test(m) ? "Herdr is out of room for its mods: reopen the window" : m || "Couldn't read this computer";
+};
 
 // Mounts nobody watches: boot partitions and system or container internals.
 const SKIP = /^\/(boot|efi|run|snap|var\/lib|nix\/store|System\/Volumes)(\/|$)/;
@@ -40,18 +48,43 @@ export default class SysMon extends View {
   init(_props, cx) {
     this.prev = null;
     this.s = null;
-    cx.timer.every(EVERY, (cx) => this.sample(cx));
+    this.error = null;
+    this.sampling = false;
+    // Without the timer the reading stands still; the block still draws with the reason, never nothing.
+    try {
+      cx.timer.every(EVERY, (cx) => this.sample(cx));
+    } catch (e) {
+      this.error = whyNot(e);
+    }
     this.sample(cx);
   }
 
   sample(cx) {
+    // One reading at a time: a slow call must not stack up behind the timer.
+    if (this.sampling) return;
+    this.sampling = true;
+    try {
+      this.read(cx);
+    } catch (e) {
+      this.sampling = false;
+      this.error = whyNot(e);
+    }
+  }
+
+  // The read itself, in its own task: a runtime that can't start one is reported, not thrown.
+  read(cx) {
     cx.spawn(async (cx) => {
       let out;
       try {
         out = (await exec("sh", ["-c", SAMPLE])).stdout;
-      } catch {
+      } catch (e) {
+        this.sampling = false;
+        this.error = whyNot(e);
+        cx.notify();
         return;
       }
+      this.sampling = false;
+      this.error = null;
       const s = { gpus: [], disks: [] };
       const mem = {};
       const seen = new Set();
@@ -124,6 +157,7 @@ export default class SysMon extends View {
       .child(h_flex().px(16).h(41).pt(14).pb(5).flex_none().items_center()
         .child(div().text_size(11.5).font_medium().text_color(t.dim).child(caps("System"))))
       .child(v_flex().id("sys-list").flex_1().min_h(0).overflow_y_scrollbar().px(16).pb(10).gap(7).text_size(11)
+        .when(!s && Boolean(this.error), (el) => el.child(div().text_size(10.5).text_color(t.blocked).child(caps(this.error))))
         .when(Boolean(s), (el) => el
           .when(!s.linux, (el) => el.child(div().text_color(t.dim).child(caps("CPU, GPU and RAM: Linux only"))))
           .when(s.linux, (el) => el.child(this.meter("cpu", "CPU", s.cpu)))
