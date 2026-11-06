@@ -5,8 +5,9 @@ Shepherdr 3.1 starts a task's agent as an hc child of its space's Assistant, wit
 Herdr space of its own ("a space can hold thousands of tasks"), so no sidebar can show it. This
 gives each started task the workspace Shepherdr 2.1 had: a real Herdr space whose folder is the
 task's worktree, under the space it belongs to, with the task's own tabs - Chat (the worker's
-conversation), Terminal (the live hc terminal itself, never a new one), Files, Changes and Pull
-request (this repo's px-files, px-changes, px-pr, which follow the space's folder).
+conversation), Terminal (the live hc terminal itself, never a new one), a REVIEW tab per live
+reviewer, Files, Changes and Pull request (this repo's px-files, px-changes, px-pr, which follow the
+space's folder).
 
 The desktop's spaces are herdr-core's "herdr-app" document, as Shepherdr 2.1's desktop-layout
 kept them: read and written over `herdr-core connect` (terminal.list, doc.get, doc.set). Only
@@ -21,6 +22,13 @@ stick - the space would come back with an Assistant and be removed again, over a
 programs keep running; only their place in the window goes. Should one still come back three
 times, it is left in the document and out of the sidebars for half an hour (said once in the
 log), so a stuck label can never turn into a write loop.
+
+A worker starts each reviewer as its own hc terminal (herdr.role=reviewer, herdr.task=<key>,
+named review-<task id>-<round>; a label that names the task's ref or its bare id is accepted
+too, checked against the worktree it works in). Every live one gets its own tab after Terminal,
+named by its round (REVIEW 2 for review-4-2), and the tab goes once its terminal is gone.
+Reviewer tabs are found by name and by the terminal they show, never copied along as a tab
+someone added, and one is made per terminal, so restarts cannot duplicate or strand them.
 
 It reads this computer's ~/.herdr/tasks lists and this computer's window; a task in a space on
 another machine is not mirrored here.
@@ -47,7 +55,7 @@ which workspace a task has, the space to nest it under, its id, status and progr
   task-workspaces.py --session NAME  another hc session (default: this computer's)
   task-workspaces.py --dry-run       say what it would do, change nothing
 """
-import fcntl, glob, hashlib, json, os, subprocess, sys, time
+import fcntl, glob, hashlib, json, os, re, subprocess, sys, time
 
 HOME = os.path.expanduser("~")
 APP_HOME = os.environ.get("HERDR_APP_HOME") or os.path.join(HOME, ".config", "herdr-app")
@@ -59,6 +67,8 @@ HC = os.environ.get("HC_CLI") or "hc"
 PREFIX = "sptask"
 # The tabs every task workspace gets, in this order. Chat first: a click opens it.
 CHAT, TERM, FILES, CHANGES, PR = "Chat", "Terminal", "Files", "Changes", "PR"
+# A reviewer's tab reads REVIEW <round>; its terminal is named review-<task id>-<round>.
+REVIEW = "REVIEW"
 # A task's state while it is started and not finished (herdr-task's words: todo, queued, running,
 # ready, done). Ready stays: its worker is still there, waiting for the person.
 LIVE_STATES = ("running", "ready")
@@ -139,6 +149,50 @@ def workers_by_task(terminals):
     return out
 
 
+def reviewers_by_task(terminals):
+    """Live reviewer terminals by herdr.task label: {key: [terminal]}.
+
+    A worker starts each review round as its own hc terminal, labelled herdr.role=reviewer and
+    herdr.task=<key>, named review-<task id>-<round>. Its round is read off that name.
+    """
+    out = {}
+    for k in terminals:
+        lab = k.get("labels") or {}
+        key = lab.get("herdr.task")
+        if not key or k.get("state") != "live" or lab.get("herdr.role") != "reviewer":
+            continue
+        out.setdefault(key, []).append(k)
+    return out
+
+
+def review_round(name):
+    """The round in a reviewer's name (review-4-2 -> 2), or None when it has none."""
+    m = re.search(r"-(\d+)$", str(name or ""))
+    return int(m.group(1)) if m else None
+
+
+def reviewer_tabs(reviewers):
+    """One tab per live reviewer, named by its round and in round order: [{address, name}].
+
+    The round keeps a tab's name steady while another reviewer comes and goes (REVIEW 2 stays
+    REVIEW 2 when round 1's terminal is gone). Should two live reviewers share a round - or any
+    have no round - they are numbered in their order instead, so no two tabs read the same.
+    """
+    rows = []
+    for k in reviewers:
+        rows.append({"address": k.get("address"), "round": review_round(k.get("name")),
+                     "created": k.get("created_ms") or 0})
+    unknown_round = any(r["round"] is None for r in rows)
+    rounded = [r["round"] for r in rows if r["round"] is not None]
+    if unknown_round or len(set(rounded)) != len(rounded):
+        rows.sort(key=lambda r: (r["created"], r["address"] or ""))
+        for i, r in enumerate(rows, 1):
+            r["round"] = i
+    else:
+        rows.sort(key=lambda r: (r["round"], r["created"], r["address"] or ""))
+    return [{"address": r["address"], "name": f"{REVIEW} {r['round']}"} for r in rows]
+
+
 def repo_root(path):
     """The checkout a worktree belongs to (its .git points at <repo>/.git/worktrees/<name>)."""
     try:
@@ -162,9 +216,45 @@ def repo_root(path):
     return repo if repo and os.path.isdir(repo) else None
 
 
+def under(path, folder):
+    """Whether path is folder or inside it (real paths; False when either is empty)."""
+    try:
+        p = os.path.realpath(path or "")
+        f = os.path.realpath(folder or "")
+    except OSError:
+        return False
+    return bool(f) and (p == f or p.startswith(f + os.sep))
+
+
+def reviewers_for(reviewers, key, ref, tid, worktree, unique_refs):
+    """A task's live reviewers: those labelled with its key, else with its ref or bare id.
+
+    The worker template says herdr.task=<task id>, which workers have taken to mean the
+    key (data-jpl-Work-personal-herdr-desktop#4), the ref (PHD-4) or the bare id (4). The
+    bare id is only trusted when the reviewer works in the task's worktree (ids repeat
+    across repos), and a repeated ref only then too.
+    """
+    found = list(reviewers.get(key) or [])
+    seen = {k.get("address") for k in found}
+    for label in (ref, ref.lower(), str(tid)):
+        for k in reviewers.get(label) or []:
+            if k.get("address") in seen:
+                continue
+            if under(k.get("cwd"), worktree) or (label != str(tid) and unique_refs.get(ref) == 1):
+                seen.add(k.get("address"))
+                found.append(k)
+    return found
+
+
 def desired(lists, terminals, spaces):
     """The task workspaces that should exist: [{id, key, ref, ...}] in a stable order."""
     workers = workers_by_task(terminals)
+    reviewers = reviewers_by_task(terminals)
+    unique_refs = {}
+    for lst in lists:
+        for t in lst["tasks"]:
+            r = f"{lst.get('prefix') or 'TASK'}-{t['id']}"
+            unique_refs[r] = unique_refs.get(r, 0) + 1
     by_folder = {}
     for s in spaces:
         if s.get("machine") or not s.get("folder"):
@@ -178,6 +268,7 @@ def desired(lists, terminals, spaces):
             if t.get("archived") or t.get("state") not in LIVE_STATES:
                 continue
             key = f"{slug}#{t['id']}"
+            ref = f"{lst.get('prefix') or 'TASK'}-{t['id']}"
             live = workers.get(key) or []
             ws = t.get("worktree") if os.path.isdir(t.get("worktree") or "") else folder
             if not ws or not os.path.isdir(ws):
@@ -195,7 +286,6 @@ def desired(lists, terminals, spaces):
             progress = t.get("progress") or {}
             done = progress.get("done")
             num = lambda v: isinstance(v, (int, float)) and not isinstance(v, bool)
-            ref = f"{lst.get('prefix') or 'TASK'}-{t['id']}"
             # Where it belongs: the space of the checkout its worktree is from (where the person
             # looks for that repo), else the space it was started from.
             root = repo_root(ws) if ws != folder else (repo_root(folder) or folder)
@@ -221,6 +311,7 @@ def desired(lists, terminals, spaces):
                 "doing": text(progress.get("text"), 120) or None,
                 "left": round(progress["left"] / 60000) if num(progress.get("left")) else None,
                 "chat": hid("tb", f"{hid(PREFIX, key)}:{CHAT}", 30),
+                "reviewers": reviewer_tabs(reviewers_for(reviewers, key, ref, t["id"], ws, unique_refs)),
                 "started": t.get("started") or None,
                 "key_ref": {"machine": None, "folder": folder, "slug": slug, "id": t["id"]},
             })
@@ -257,16 +348,56 @@ def tabs_of(t, existing=()):
         tid = hid("tb", f"{t['id']}:{name}", 30)
         tabs.append({"id": tid, "name": name, "root": {"id": tid, "type": "row",
                      "children": [{"id": hid("p", f"{t['id']}:{name}", 30), "type": "block", "content": c}]}})
+        if name == TERM:
+            tabs.extend(reviewer_tab(r, t["id"]) for r in t.get("reviewers") or [])
+    # A task with no live worker still shows its reviewers: they sit after Chat, where Terminal would.
+    if not t.get("live"):
+        tabs[1:1] = [reviewer_tab(r, t["id"]) for r in t.get("reviewers") or []]
     # Tabs someone added to the workspace (an nvim opened from Changes, say): kept after the task's
     # own, as they are, so the workspace never fights the window over a terminal it shows. A chat
-    # tab the tab bar made for an Assistant never stays.
+    # tab the tab bar made for an Assistant never stays, and neither does a reviewer tab: those are
+    # the task's own, made above for exactly the live reviewers, so a stale one (its terminal gone)
+    # or a second copy of one goes.
     ids = {tab["id"] for tab in tabs}
+    live_reviewers = {r["address"] for r in t.get("reviewers") or []}
     for tab in existing or []:
         if tab.get("id") in ids or coordinator_tab(tab):
+            continue
+        if reviewer_tab_of(tab) or tab_terminals(tab) & live_reviewers:
             continue
         ids.add(tab.get("id"))
         tabs.append(tab)
     return tabs
+
+
+def reviewer_tab(reviewer, space_id):
+    """One reviewer terminal's tab, second after Terminal (REVIEW 1, REVIEW 2...)."""
+    addr = reviewer["address"]
+    tid = hid("tb", f"{space_id}:review:{addr}", 30)
+    return {"id": tid, "name": reviewer["name"], "root": {"id": tid, "type": "row",
+            "children": [{"id": hid("p", f"{space_id}:review:{addr}", 30), "type": "block",
+                          "content": {"terminal": addr}}]}}
+
+
+def tab_terminals(tab):
+    """Every terminal address a tab shows."""
+    out = set()
+    def walk(node):
+        if not isinstance(node, dict):
+            return
+        addr = (node.get("content") or {}).get("terminal")
+        if addr:
+            out.add(addr)
+        for c in node.get("children") or []:
+            walk(c)
+    walk(tab.get("root"))
+    return out
+
+
+def reviewer_tab_of(tab):
+    """Whether a tab is one this service made for a reviewer (REVIEW <n>, showing one terminal)."""
+    return (re.match(r"^REVIEW \d+$", str(tab.get("name") or "")) is not None
+            and len(tab_terminals(tab)) == 1)
 
 
 def clear_space_labels(sid, terminals, session=None):

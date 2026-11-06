@@ -33,17 +33,19 @@ All art and sounds are original and drawn as vectors, so they stay sharp on Reti
   because the document has to be written even with no window open, and mods only draw it): each started Shepherdr 3.x
   task becomes a real Herdr workspace on its worktree, under the space of the repo it is from (the same place the
   sidebar already puts worktrees). Its tabs are the task's Chat, its agent's live terminal (the one it runs in, no new
-  one), Files, Changes and Pull request, then any tab someone added (an nvim from Changes, say); clicking it in the
-  sidebar opens its Chat. It goes when the task is done, archived or removed: two passes in a row, so a flicker never
-  closes a space, and its live terminals are unlabelled first, because a live terminal keeps its `herdr.space` label
-  and Herdr rebuilds the space (with an Assistant) from it - without that a removed space comes back and is removed
-  again, over and over. The programs keep running; only their place in the window goes. (If one still comes back
-  three times it is left in the document and out of the sidebar for half an hour, said once in the log, so a stuck
-  label can never turn into a write loop.) Workspaces made by hand are never touched. The service reads this
-  computer's tasks only, and a task workspace follows its task, so renaming its rows by hand is undone. While the
-  window is open each of these writes is a layout change it didn't make, so Herdr shows its own "Layout changed
-  elsewhere" notice when a task appears, goes or is renamed, or when its worker is replaced (never for a status or
-  progress change).
+  one), one REVIEW tab per live reviewer, Files, Changes and Pull request, then any tab someone added (an nvim from
+  Changes, say); clicking it in the sidebar opens its Chat. A worker starts each review round as its own labelled hc
+  terminal, and its tab is named by the round (REVIEW 2 for `review-4-2`); the tab goes once that terminal is gone,
+  and is never kept as a hand-added tab, so a window restart cannot duplicate or strand one. It goes when the task is
+  done, archived or removed: two passes in a row, so a flicker never closes a space, and its live terminals are
+  unlabelled first, because a live terminal keeps its `herdr.space` label and Herdr rebuilds the space (with an
+  Assistant) from it - without that a removed space comes back and is removed again, over and over. The programs keep
+  running; only their place in the window goes. (If one still comes back three times it is left in the document and out
+  of the sidebar for half an hour, said once in the log, so a stuck label can never turn into a write loop.) Workspaces
+  made by hand are never touched. The service reads this computer's tasks only, and a task workspace follows its task,
+  so renaming its rows by hand is undone. While the window is open each of these writes is a layout change it didn't
+  make, so Herdr shows its own "Layout changed elsewhere" notice when a task appears, goes or is renamed, or when its
+  worker is replaced (never for a status or progress change).
 - Other machines' Shepherdrs: `~/.config/herdr-app/shepherdr-sources.json` (see the example file).
 
 **Desk** (`mods/desk`, DESK button in the status bar): pomodoro timer with a pixel tomato, focus stats and a 14-day
