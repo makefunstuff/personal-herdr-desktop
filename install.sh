@@ -32,7 +32,7 @@ for f in $(cd "$SRC" && find themes layouts backgrounds pixel-icons workbench-ic
   put "$SRC/$f" "$DST/$f"
 done
 for f in "$SRC"/programs-*.json; do put "$f" "$DST/$(basename "$f")"; done
-chmod +x "$DST/bin/shepherdr-desktop-sync.py" "$DST/bin/task-workspaces.py"
+chmod +x "$DST/bin/shepherdr-desktop-sync.py" "$DST/bin/task-workspaces.py" "$DST/bin/shepherdr-spaces.py"
 [ -f "$DST/shepherdr-sources.json" ] || cp "$SRC/shepherdr-sources.example.json" "$DST/shepherdr-sources.example.json"
 
 echo "== Herdr: mods"
@@ -250,12 +250,18 @@ if [ "$OS" = Linux ]; then
   else
     echo "  task-workspaces: skipped (no Shepherdr 3.1 tasks mod in $DST/mods)"
   fi
+  # The Shepherdr server's tasks as spaces with its own agents (shepherdr-spaces.py): when it is installed here.
+  if [ -d "$HOME/.shepherdr" ]; then
+    tmp=$(mktemp); sed "s#%h/.config/herdr-app#$DST#g" "$L/systemd/herdr-shepherdr-spaces.service" > "$tmp"
+    put "$tmp" "$HOME/.config/systemd/user/herdr-shepherdr-spaces.service"; rm -f "$tmp"
+  fi
   if [ -f "$HOME/.config/hypr/hyprland.lua" ]; then
     put "$L/hypr/herdr-typing.lua" "$HOME/.config/hypr/herdr-typing.lua"
     grep -q 'require("hypr.herdr-typing")' "$HOME/.config/hypr/hyprland.lua" || { backup "$HOME/.config/hypr/hyprland.lua"; echo 'require("hypr.herdr-typing")' >> "$HOME/.config/hypr/hyprland.lua"; }
   fi
   systemctl --user daemon-reload
   systemctl --user enable --now herdr-keyclick.service
+  [ -f "$HOME/.config/systemd/user/herdr-shepherdr-spaces.service" ] && { systemctl --user enable herdr-shepherdr-spaces.service; systemctl --user restart herdr-shepherdr-spaces.service; }
   # restart, not just enable --now: a running service keeps the script it started with, and this one
   # only picks up a fix when it is restarted.
   if [ -d "$DST/mods/tabs-tasks" ]; then

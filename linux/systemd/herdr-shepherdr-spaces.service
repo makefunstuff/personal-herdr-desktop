@@ -1,0 +1,15 @@
+[Unit]
+Description=Herdr: one space per Shepherdr server task, with Shepherdr's own agent in it (shepherdr-spaces.py)
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 -I %h/.config/herdr-app/bin/shepherdr-spaces.py --every 10
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=HERDR_APP_HOME=%h/.config/herdr-app
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=graphical-session.target

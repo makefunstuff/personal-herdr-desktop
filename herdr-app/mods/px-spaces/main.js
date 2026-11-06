@@ -259,6 +259,11 @@ export default class Spaces extends View {
     const list = all.filter((r) => !r.task && !String(r.w.id).startsWith(TASK_PREFIX));
     const tasks = all.filter((r) => r.task && known.has(r.task.parent ?? r.task.space));
     const mains = new Set(list.filter((r) => r.g && !r.g.linked).map((r) => r.g.repo));
+    // A task worktree whose folder git can't read (removed once its task finished) still nests under
+    // its repo by path: ~/.shepherdr/worktrees/<repo>/… or ~/.herdr/worktrees/<repo>/….
+    const byName = new Map(list.filter((r) => r.g && !r.g.linked).map((r) => [r.g.name, r.g.repo]));
+    const wtRepo = (r) => { const m = String(r.w.folder ?? "").match(/\/\.(?:shepherdr|herdr)\/worktrees\/([^/]+)\//); return m ? byName.get(m[1]) : undefined; };
+    for (const r of list) if (!r.g?.linked && !r.w.machine) { const repo = wtRepo(r); if (repo) r.g = { ...(r.g ?? { branch: null, ahead: 0, behind: 0, name: "" }), repo, linked: true }; }
     const nested = (r) => r.g?.linked && mains.has(r.g.repo);
     const out = [];
     const placed = new Set(); // repos whose worktrees are listed (under the first of its spaces)
