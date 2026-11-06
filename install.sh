@@ -56,6 +56,13 @@ if [ -d "$DST/mods/chat" ] && command -v patch >/dev/null; then
     applied "$u" -i "$P/ui.js.patch" && continue
     if applies "$u" -i "$P/ui.js.patch"; then backup "$u"; patch -s -N -t "$u" -i "$P/ui.js.patch" </dev/null; else echo "  $u: not Shepherdr 3.x's, left as is"; fi
   done
+  # lib/inbox.js and every mod's copy: Needs you leaves out herdr-task's items for the repos this computer's
+  # Shepherdr server has (its record is the one; herdr-task's lists for them go stale).
+  for u in "$DST"/lib/inbox.js "$DST"/mods/*/inbox.js; do
+    [ -f "$u" ] || continue
+    applied "$u" -i "$P/inbox-shepherdr-server.patch" && continue
+    if applies "$u" -i "$P/inbox-shepherdr-server.patch"; then backup "$u"; patch -s -N -t "$u" -i "$P/inbox-shepherdr-server.patch" </dev/null; else echo "  $u: not Shepherdr 3.1's inbox, left as is"; fi
+  done
   # lib/live.js and every mod's copy: an agent started from another window (its herdr.chat label in that window's
   # form, "machine/p1" or "p1") keeps its chat, so a machine with its own Shepherdr window doesn't end it.
   for u in "$DST"/lib/live.js "$DST"/mods/*/live.js; do

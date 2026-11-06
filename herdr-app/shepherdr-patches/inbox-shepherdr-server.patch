@@ -1,0 +1,30 @@
+--- a/inbox.js
++++ b/inbox.js
+@@ -249,6 +249,15 @@
+   return reading ??= readTasksNow().finally(() => { reading = null; });
+ }
+ 
++// The repos this computer's Shepherdr server has tasks in (empty when it isn't running).
++async function shepherdrRepos() {
++  try {
++    const r = await fetch("http://127.0.0.1:7787/api/snapshot");
++    if (!r.ok) return new Set();
++    return new Set(((await r.json()).tasks ?? []).map((t) => t.repo).filter(Boolean));
++  } catch { return new Set(); }
++}
++
+ async function readTasksNow() {
+   const r = await exec("sh", ["-c", 'ls "$HOME/.herdr/tasks/.remote" 2>/dev/null; true']).catch(() => null);
+   const where = [null, ...(r?.stdout ?? "").split("\n").filter(Boolean)];
+@@ -274,7 +283,10 @@
+     for (const a of Array.isArray(auto) ? auto : []) if (a?.last_error)
+       autos.push({ machine, id: a.id, ref: a.ref ?? null, title: a.title, folder: a.folder, error: a.last_error, last_task: a.last_task ?? null });
+   }
+-  put("inbox.tasks", tasks);
++  // This computer's Shepherdr server is the one record for the repos it knows (mods/tasks shepherdrLists):
++  // herdr-task's lists for those repos go stale beside it, so their items aren't the person's to answer.
++  const srv = await shepherdrRepos();
++  put("inbox.tasks", tasks.filter((x) => x.machine || !srv.has(x.folder)));
+   put("inbox.autos", autos);
+   await readRetries();
+ }
