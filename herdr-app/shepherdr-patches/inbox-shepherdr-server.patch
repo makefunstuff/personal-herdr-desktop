@@ -28,3 +28,14 @@
    put("inbox.autos", autos);
    await readRetries();
  }
+@@ -323,7 +335,9 @@
+     if (k.state === "live" && k.status === "blocked" && !asking.has(k.address))
+       out.push({ key: `blocked:${k.address}`, kind: "blocked", terminal: k.address, at: blockedSince(k.address) });
+   const tasks = shared("inbox.tasks") ?? [];
+-  for (const x of tasks) if (x.kind !== "merge" && x.kind !== "asks") out.push({ key: `${x.kind}:${x.machine ?? ""}:${x.folder}:${x.ref}`, ...x });
++  // Repos this computer's Shepherdr server has (mods/tasks shares them): herdr-task's items for them are stale.
++  const srv = new Set(shared("shepherdr.repos") ?? []);
++  for (const x of tasks) if (x.kind !== "merge" && x.kind !== "asks" && (x.machine || !srv.has(x.folder))) out.push({ key: `${x.kind}:${x.machine ?? ""}:${x.folder}:${x.ref}`, ...x });
+   for (const p of shared("inbox.provider") ?? []) if (!asking.has(p.terminal)) out.push({ key: `provider:${p.terminal}`, kind: "provider", ...p });
+   for (const a of shared("inbox.autos") ?? []) out.push({ key: `auto:${a.machine ?? ""}:${a.id}`, kind: "auto", ...a, at: a.error?.at ?? 0 });
+   return out;

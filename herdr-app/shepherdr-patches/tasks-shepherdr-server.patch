@@ -1,5 +1,5 @@
 --- a/tasks/main.js	2026-11-06 16:04:53.383291543 +0200
-+++ b/tasks/main.js	2026-11-06 16:04:53.384469061 +0200
++++ b/tasks/main.js	2026-11-06 16:11:15.904065445 +0200
 @@ -38,6 +38,53 @@
  // How the list can be grouped (the ⋯ menu's Group by; Shepherdr's GROUP_WORDS). "folder" was Space's old key.
  export const GROUP_BY = ["status", "space", "machine", "machine-space"];
@@ -62,7 +62,7 @@
    }
  
    // One machine's lists (null: this computer's).
-@@ -186,10 +234,13 @@
+@@ -186,10 +234,17 @@
        if (again) cx.spawn(async (cx) => this.load(cx, machine));
      }
      if (!machine) { this.ready = true; this.error = null; }
@@ -72,7 +72,11 @@
 -      .map((d) => ({ ...d, machine, prefix: d.prefix || autoPrefix(d.folder), tasks: Array.isArray(d.tasks) ? d.tasks : [] })));
 +    let own = taskLists(text).map((d) => ({ ...d, machine, prefix: d.prefix || autoPrefix(d.folder), tasks: Array.isArray(d.tasks) ? d.tasks : [] }));
 +    const { lists: srv, repos } = machine ? { lists: [], repos: new Set() } : await shepherdrLists(own);
-+    if (!machine) own = own.filter((d) => !repos.has(d.folder));
++    if (!machine) {
++      own = own.filter((d) => !repos.has(d.folder));
++      const shareRepos = [...repos].sort();
++      if (JSON.stringify(shared("shepherdr.repos") ?? []) !== JSON.stringify(shareRepos)) cx.timer.after(0, () => setShared("shepherdr.repos", shareRepos));
++    }
 +    const seen = text + JSON.stringify(srv);
 +    if (this.raw.get(k) === seen) { cx.notify(); return; }
 +    this.raw.set(k, seen);
@@ -80,7 +84,7 @@
      this.merge();
      cx.notify();
    }
-@@ -225,6 +276,12 @@
+@@ -225,6 +280,12 @@
    // A task's status (its section), why it needs the person, and its live agents. The same rules
    // as herdr-task's task_status(): its record, then its agents' own status.
    place(list, task) {
@@ -93,7 +97,7 @@
      const st = task.state;
      const live = st === "running" || st === "ready" ? this.live(list, task) : [];
      const loaded = machines().find((m) => (m.name ?? null) === (list.machine ?? null))?.layout !== "loading";
-@@ -797,6 +854,7 @@
+@@ -797,6 +858,7 @@
    // alone too); else its last agent's conversation, read from that agent's own log, with Resume
    // (mods/chat); a task that never started says why it waits. Nowhere in a layout without the view.
    target(p) {
@@ -101,7 +105,7 @@
      if (!threads()) return null;
      const { list, task } = p;
      const m = list.machine ?? null;
-@@ -824,7 +882,7 @@
+@@ -824,7 +886,7 @@
      return this.line(`task-${key}`, {
        go: this.target(p), glyph: this.glyph(p, w), ref: refOf(list, task), title: task.title, sub, left,
        dim: section === "done", selected: focused, where: this.whereOf(list.machine, placeName(list)),
@@ -110,7 +114,7 @@
        pin: this.shelved(p) ? null : { key, on: this.pins().has(key) },
      }, t);
    }
-@@ -862,6 +920,31 @@
+@@ -862,6 +924,31 @@
      return button(`accept-${key}`, busy ? "Accepting…" : "Accept", { kind: "primary", size: "xs", disabled: busy, onClick: () => this.accept(p) });
    }
  
