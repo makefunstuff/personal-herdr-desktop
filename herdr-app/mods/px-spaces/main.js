@@ -263,7 +263,7 @@ export default class Spaces extends View {
     // its repo by path: ~/.shepherdr/worktrees/<repo>/… or ~/.herdr/worktrees/<repo>/….
     const byName = new Map(list.filter((r) => r.g && !r.g.linked).map((r) => [r.g.name, r.g.repo]));
     const wtRepo = (r) => { const m = String(r.w.folder ?? "").match(/\/\.(?:shepherdr|herdr)\/worktrees\/([^/]+)\//); return m ? byName.get(m[1]) : undefined; };
-    for (const r of list) if (!r.g?.linked && !r.w.machine) { const repo = wtRepo(r); if (repo) r.g = { ...(r.g ?? { branch: null, ahead: 0, behind: 0, name: "" }), repo, linked: true }; }
+    for (const r of list) if (!r.g?.linked && !r.w.machine) { const repo = wtRepo(r); if (repo) r.g = { ...(r.g ?? { branch: null, ahead: 0, behind: 0, name: "", gone: true }), repo, linked: true }; }
     const nested = (r) => r.g?.linked && mains.has(r.g.repo);
     const out = [];
     const placed = new Set(); // repos whose worktrees are listed (under the first of its spaces)
@@ -336,7 +336,7 @@ export default class Spaces extends View {
   // branch goes when the name already says it (a worktree is named after its branch),
   // and master/main go: nearly every space is on one.
   gitTail(g, tree, name, t) {
-    const raw = g.branch ?? "detached";
+    const raw = g.gone ? "worktree removed" : g.branch ?? "detached";
     const same = (a) => a.toLowerCase() === name.toLowerCase();
     const branch = same(raw) || raw === "master" || raw === "main" ? "" : raw;
     const repo = tree || same(g.name) ? "" : g.name;
