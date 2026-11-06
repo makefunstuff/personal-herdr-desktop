@@ -10,8 +10,8 @@ nests a worktree's space under its repo's) shows exactly the server's tasks:
 - that space's "agent" tab is Shepherdr's agent itself (hc attach over the shepherdr socket), never
   a second agent; when Shepherdr relaunches the agent, the tab follows the new terminal;
 - it gets an "nvim" tab in the worktree;
-- spaces are never closed here: a finished task keeps its space under its repo (px-spaces nests it by
-  the worktree path even once the worktree is removed) until the person closes it.
+- a task's space is closed once the task is done and Shepherdr removed its worktree, unless an agent
+  of its own (not Shepherdr's attached one) still runs there.
 
 Tabs other than "agent"/"nvim" are left alone.
 
@@ -150,8 +150,21 @@ def one_pass():
         if not any(tab.get("name") == "nvim" for tab in tabs):
             herdr("do", "tab.new", "--name", "nvim", "--space", sp["id"], "--folder", folder, "--argv", json.dumps(["nvim"]))
 
-    # Spaces this made stay after their task is done (the Spaces list keeps them under their repo,
-    # also once the worktree is removed); closing one is the person's call. Forget ones closed.
+    # A task's space goes once its task is finished and Shepherdr removed its worktree: nothing is left to
+    # work on there. Only spaces in a task worktree folder (~/.shepherdr/worktrees, ~/.herdr/worktrees) whose
+    # task is done, and with no agent of their own still running (only Shepherdr's, attached, or shells).
+    done = {os.path.realpath(t["folder"]) for t in snap.get("tasks", []) if t.get("folder") and t.get("status") == "done"}
+    roots = [os.path.join(HOME, ".shepherdr", "worktrees"), os.path.join(HOME, ".herdr", "worktrees")]
+    for s in spaces:
+        f = s.get("folder") or ""
+        if not any(f.startswith(r + "/") for r in roots) or os.path.isdir(f) or os.path.realpath(f) not in done:
+            continue
+        own = [x["terminal"] for tab in s.get("tabs") or [] for x in tab.get("terminals", [])
+               if x.get("app") and x.get("terminal") and not attached_to(x["terminal"])]
+        if own:
+            continue
+        herdr("do", "space.close", "--id", s["id"], "--confirmed", "true")
+        made.pop(s["id"], None)
     ids = {s["id"] for s in spaces}
     for sid in [k for k in made if k not in ids]:
         made.pop(sid)
