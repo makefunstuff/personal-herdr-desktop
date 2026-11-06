@@ -1,0 +1,94 @@
+--- a/tasks/main.js	2026-11-06 12:14:46.841607773 +0200
++++ b/tasks/main.js	2026-11-06 12:14:46.842654576 +0200
+@@ -38,6 +38,38 @@
+ // How the list can be grouped (the ⋯ menu's Group by; Shepherdr's GROUP_WORDS). "folder" was Space's old key.
+ export const GROUP_BY = ["status", "space", "machine", "machine-space"];
+ const groupBy = (v) => (v === "folder" ? "space" : GROUP_BY.includes(v) ? v : "status");
++// This computer's Shepherdr server (project management: its spaces' tasks and worktrees). Its tasks that
++// herdr-task has no list entry for (matched by branch) show here too, one list per Shepherdr space, read-only:
++// a click opens Shepherdr's panel. Status from the server: need -> Needs you (its report's words), work ->
++// Working, ready, queued, todo, done as they are.
++const SHEPHERDR = "http://127.0.0.1:7787/api/snapshot";
++const SRV_SECTION = { need: "needs", work: "working", ready: "ready", merging: "merging", queued: "queued", todo: "todo", done: "done" };
++async function shepherdrLists(have) {
++  let snap;
++  try { const r = await fetch(SHEPHERDR); if (!r.ok) return []; snap = await r.json(); } catch { return []; }
++  const branches = new Set(have.flatMap((l) => l.tasks.map((t) => t.branch)).filter(Boolean));
++  const lists = new Map();
++  for (const k of snap.tasks ?? []) {
++    if (k.archived || (k.branch && branches.has(k.branch))) continue;
++    const place = (snap.places ?? []).find((p) => p.id === k.place);
++    const m = /^(.*)-(\d+)$/.exec(k.id ?? "");
++    if (!place || !m) continue;
++    const l = lists.get(place.id) ?? { slug: `shepherdr-${place.name}`, folder: k.repo ?? place.folder ?? place.name, name: place.name, prefix: m[1], server: true, tasks: [] };
++    l.tasks.push({ id: Number(m[2]), title: k.name, state: k.status === "done" ? "done" : k.status === "todo" ? "todo" : k.status === "queued" ? "queued" : "running",
++      branch: k.branch, worktree: k.folder, srv: { status: k.status, why: k.report?.msg ?? k.agent?.note ?? k.state ?? null, progress: k.report?.progress ?? null } });
++    lists.set(place.id, l);
++  }
++  return [...lists.values()];
++}
++function openShepherdr() {
++  const modTabs = new Set(panes().filter((p) => p.mod === "shepherdr").map((p) => p.tab));
++  for (const s of spaces()) {
++    const tab = (s.tabs ?? []).find((t) => modTabs.has(t.id));
++    if (tab) { if (!s.active) run("space.select", { id: s.id }); run("tab.select", { id: tab.id }); return; }
++  }
++  run("tab.new", { name: "Shepherdr", mod: "shepherdr" });
++}
++
+ // Every list in ~/.herdr/tasks on a machine is read with READ_LISTS and kept by taskLists (one
+ // rule with herdr-task's: tasklists.js).
+ // A list's task id: HAT-4 (a list from before prefixes has herdr-task's own: load()).
+@@ -167,6 +199,7 @@
+     const ms = machines().map((m) => m.name).filter(Boolean);
+     for (const m of [...this.byMachine.keys()]) if (m && !ms.includes(m)) { this.byMachine.delete(m); this.raw.delete(m); this.merge(); cx.notify(); }
+     for (const m of machines()) if (m.name && m.layout !== "unavailable") cx.spawn(async (cx) => this.load(cx, m.name));
++    cx.spawn(async (cx) => this.load(cx, null)); // the Shepherdr server's tasks change without a file changing here
+   }
+ 
+   // One machine's lists (null: this computer's).
+@@ -186,10 +219,12 @@
+       if (again) cx.spawn(async (cx) => this.load(cx, machine));
+     }
+     if (!machine) { this.ready = true; this.error = null; }
+-    if (this.raw.get(k) === text) { cx.notify(); return; }
+-    this.raw.set(k, text);
+-    this.byMachine.set(k, taskLists(text)
+-      .map((d) => ({ ...d, machine, prefix: d.prefix || autoPrefix(d.folder), tasks: Array.isArray(d.tasks) ? d.tasks : [] })));
++    const own = taskLists(text).map((d) => ({ ...d, machine, prefix: d.prefix || autoPrefix(d.folder), tasks: Array.isArray(d.tasks) ? d.tasks : [] }));
++    const srv = machine ? [] : await shepherdrLists(own);
++    const seen = text + JSON.stringify(srv);
++    if (this.raw.get(k) === seen) { cx.notify(); return; }
++    this.raw.set(k, seen);
++    this.byMachine.set(k, [...own, ...srv.map((d) => ({ ...d, machine: null }))]);
+     this.merge();
+     cx.notify();
+   }
+@@ -225,6 +260,10 @@
+   // A task's status (its section), why it needs the person, and its live agents. The same rules
+   // as herdr-task's task_status(): its record, then its agents' own status.
+   place(list, task) {
++    if (task.srv) {
++      const section = SRV_SECTION[task.srv.status] ?? "working";
++      return { list, task, live: [], status: null, section, needs: section === "needs" ? "asks" : null, why: section === "needs" || section === "working" ? task.srv.why : null };
++    }
+     const st = task.state;
+     const live = st === "running" || st === "ready" ? this.live(list, task) : [];
+     const loaded = machines().find((m) => (m.name ?? null) === (list.machine ?? null))?.layout !== "loading";
+@@ -797,6 +836,7 @@
+   // alone too); else its last agent's conversation, read from that agent's own log, with Resume
+   // (mods/chat); a task that never started says why it waits. Nowhere in a layout without the view.
+   target(p) {
++    if (p.task.srv) return () => openShepherdr();
+     if (!threads()) return null;
+     const { list, task } = p;
+     const m = list.machine ?? null;
+@@ -824,7 +864,7 @@
+     return this.line(`task-${key}`, {
+       go: this.target(p), glyph: this.glyph(p, w), ref: refOf(list, task), title: task.title, sub, left,
+       dim: section === "done", selected: focused, where: this.whereOf(list.machine, placeName(list)),
+-      action: section === "ready" ? this.acceptButton(p, t) : null,
++      action: section === "ready" && !task.srv ? this.acceptButton(p, t) : null,
+       pin: this.shelved(p) ? null : { key, on: this.pins().has(key) },
+     }, t);
+   }

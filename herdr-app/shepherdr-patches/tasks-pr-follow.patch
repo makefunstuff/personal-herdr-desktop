@@ -1,0 +1,53 @@
+diff -ru a/tasks/bin/herdr_task/github.py b/tasks/bin/herdr_task/github.py
+--- a/tasks/bin/herdr_task/github.py	2026-11-06 12:14:46.844590011 +0200
++++ b/tasks/bin/herdr_task/github.py	2026-11-06 12:14:46.846589977 +0200
+@@ -29,6 +29,28 @@
+     return s.data["github"]["repo"]
+ 
+ 
++def pr_of_branch(s, task):
++    """A task whose pull request was opened outside Herdr (by hand, by an agent, before the board):
++    its branch's newest pull request on GitHub, recorded as the task's, so it is followed (checks,
++    merged: done) like one Herdr opened. Asked at most once per PR_EVERY; None when there is none."""
++    br, repo = task.get("branch"), github(s)
++    if not (br and repo) or now() - task.get("pr_looked", 0) < 60000:
++        return None
++    task["pr_looked"] = now()
++    s.dirty = True
++    ok, out, _ = gh("pr", "list", "--repo", repo, "--head", br, "--state", "all", "--limit", "1",
++                    "--json", "number,url")
++    try:
++        found = json.loads(out) if ok else []
++    except ValueError:
++        found = []
++    if not found:
++        return None
++    task["pr"] = {"number": found[0]["number"], "url": found[0]["url"], "repo": repo}
++    task.pop("pr_looked", None)
++    return task["pr"]
++
++
+ def remote_of(main):
+     names = git(main, "remote")[1].split()
+     return "origin" if "origin" in names else (names[0] if names else "origin")
+diff -ru a/tasks/bin/herdr_task/tick.py b/tasks/bin/herdr_task/tick.py
+--- a/tasks/bin/herdr_task/tick.py	2026-11-06 12:14:46.848874498 +0200
++++ b/tasks/bin/herdr_task/tick.py	2026-11-06 12:14:46.850749740 +0200
+@@ -13,7 +13,7 @@
+ from .agents import agent_log, agent_running, detail, held_ask, live_agents, status_word, task_status
+ from .provider import NUDGE, provider_cut, provider_error, PROVIDER_WAITS
+ from .sessions import refresh_sessions, session_of
+-from .github import finish, merged_here, pr_pending, pr_problem, pr_view, watch_main
++from .github import finish, merged_here, pr_of_branch, pr_pending, pr_problem, pr_view, watch_main
+ from .launch import default_space
+ from .store import locate, read_list, Store, store_files
+ from .queues import machine_hold, refresh_ext, running_count, set_hold, waiting_ext, waiting_for
+@@ -29,6 +29,8 @@
+ 
+ def facts(s, t, report):
+     """A worktree task merged anywhere is done; a pull request's problems need the person."""
++    if not t.get("pr") and t.get("worktree"):
++        pr_of_branch(s, t)  # a pull request opened outside Herdr counts as the task's
+     if t.get("pr"):
+         pr = t["pr"]
+         if now() - pr.get("checked", 0) < PR_EVERY:

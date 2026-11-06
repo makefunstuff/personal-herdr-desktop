@@ -31,7 +31,35 @@ const plain = (md) => String(md ?? "").replace(/^#{1,6}\s+/gm, "").replace(/\*\*
 // read-only, add { id: "legacy", name: "Board before 2.1", herdr: null, via: null, legacy: `${home()}/.shepherdr-legacy` }.
 // Shepherdr 3.1 keeps its tasks in ~/.herdr/tasks/<slug>.json (herdr-task); this panel reads them (read-only) and
 // takes each task's live status from its agents. The full Shepherdr 3.1 window is the "shepherdr" layout.
+// With a Shepherdr server running here (http://127.0.0.1:7787: the project management, its spaces, tasks and
+// worktrees), this computer's row is the server's, with herdr-task's tasks it doesn't have folded in (by branch;
+// one herdr-task saw merge shows done). Without one, herdr-task's lists alone, read-only.
 const SOURCES = [{ id: "local", name: "This computer", herdr: null, via: null, tasks3: `${home()}/.herdr/tasks` }];
+let serverSeen = { at: 0, up: false };
+async function serverUp() {
+  if (Date.now() - serverSeen.at < 30000) return serverSeen.up;
+  let up = false;
+  try { up = (await fetch("http://127.0.0.1:7787/api/snapshot")).ok; } catch {}
+  serverSeen = { at: Date.now(), up };
+  return up;
+}
+async function withHerdrTasks(snap, dir) {
+  const extra = await tasks3Snapshot(dir).catch(() => null);
+  if (!extra) return snap;
+  snap.places ??= []; snap.tasks ??= [];
+  const placeOf = new Map(snap.places.map((p) => [p.name, p.id]));
+  const byBranch = new Map(snap.tasks.filter((k) => k.branch).map((k) => [k.branch, k]));
+  for (const k of extra.tasks) {
+    if (k.archived) continue;
+    const same = k.branch && byBranch.get(k.branch);
+    if (same) { if (k.status === "done" && same.status !== "done") { same.status = "done"; same.state = "Done"; } continue; }
+    const p3 = extra.places.find((p) => p.id === k.place);
+    let place = placeOf.get(p3?.name);
+    if (!place && p3) { snap.places.push({ ...p3 }); placeOf.set(p3.name, p3.id); place = p3.id; }
+    snap.tasks.push({ ...k, place, folder: k.worktree, herdrTask: true });
+  }
+  return snap;
+}
 
 // ---- Shepherdr 3.1's tasks: what the Monitor shows of them, with the same rules and words as
 // Shepherdr's own Tasks panel (core/tasks.js). A mod can only import its own folder, so this is the
@@ -253,6 +281,7 @@ const STATUS_WORD = { need: "needs you", ready: "ready", merging: "merging", wor
 const OPEN = ["need", "ready", "merging", "work", "queued", "todo"];
 
 async function call(src, path, body) {
+  if (src.tasks3 && await serverUp()) src = { ...src, tasks3: null, merge3: src.tasks3 };
   if (src.tasks3) {
     if (body !== undefined) throw new Error("Use the Shepherdr layout (Ctrl+Shift+L) to act on tasks");
     if (path === "snapshot") return tasks3Snapshot(src.tasks3);
@@ -276,6 +305,7 @@ async function call(src, path, body) {
     const r = await fetch(url, body === undefined ? undefined : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     const j = await r.json().catch(() => ({}));
     if (!r.ok || j?.error) throw new Error(j?.error ?? `HTTP ${r.status}`);
+    if (path === "snapshot" && src.merge3) return withHerdrTasks(j, src.merge3);
     return j;
   }
   const args = ["-sS", "-m", "20", "-w", "\n%{http_code}"];

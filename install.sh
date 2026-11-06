@@ -81,6 +81,7 @@ if [ -d "$DST/mods/chat" ] && command -v patch >/dev/null; then
     newspace.patch,newspace pane-chat.patch,pane-chat prompt-chat.patch,prompt-chat \
     shepherdr-settings.patch,shepherdr-settings spaces-chat.patch,spaces-chat task-changes.patch,task-changes \
     task-files.patch,task-files task-pr.patch,task-pr tasks-menu.patch,tasks-menu tasks.patch,tasks \
+    tasks-shepherdr-server.patch,tasks tasks-pr-follow.patch,tasks \
     toasts.patch,toasts workspace-chrome-shepherdr.patch,workspace-chrome-shepherdr \
     workspace-status-chat.patch,workspace-status-chat; do
     f=${pp%,*} m=${pp#*,}
