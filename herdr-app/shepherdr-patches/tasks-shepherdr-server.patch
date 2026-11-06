@@ -1,31 +1,46 @@
---- a/tasks/main.js	2026-11-06 12:14:46.841607773 +0200
-+++ b/tasks/main.js	2026-11-06 12:14:46.842654576 +0200
-@@ -38,6 +38,38 @@
+--- a/tasks/main.js	2026-11-06 16:04:53.383291543 +0200
++++ b/tasks/main.js	2026-11-06 16:04:53.384469061 +0200
+@@ -38,6 +38,53 @@
  // How the list can be grouped (the ⋯ menu's Group by; Shepherdr's GROUP_WORDS). "folder" was Space's old key.
  export const GROUP_BY = ["status", "space", "machine", "machine-space"];
  const groupBy = (v) => (v === "folder" ? "space" : GROUP_BY.includes(v) ? v : "status");
-+// This computer's Shepherdr server (project management: its spaces' tasks and worktrees). Its tasks that
-+// herdr-task has no list entry for (matched by branch) show here too, one list per Shepherdr space, read-only:
-+// a click opens Shepherdr's panel. Status from the server: need -> Needs you (its report's words), work ->
-+// Working, ready, queued, todo, done as they are.
++// This computer's Shepherdr server (project management: its spaces' tasks and worktrees) is the one source
++// for every repo it knows: herdr-task's lists for those repos are left out (they go stale beside it), and
++// only repos the server doesn't have keep herdr-task's lists. One list per Shepherdr space. Status from the
++// server: need -> Needs you (its report's words), work -> Working, ready, queued, todo, done as they are;
++// a task herdr-task finished on the same branch shows as done (the server's record lagged) until closed.
++// Close / Archive on a row are Shepherdr's own actions (POST /api/action): Close stops its agents and puts
++// its worktree away (refused with the reason while it holds uncommitted or unmerged work: Close anyway
++// forces); Archive takes a closed task out of every list.
 +const SHEPHERDR = "http://127.0.0.1:7787/api/snapshot";
++const SHEPHERDR_ACTION = "http://127.0.0.1:7787/api/action";
 +const SRV_SECTION = { need: "needs", work: "working", ready: "ready", merging: "merging", queued: "queued", todo: "todo", done: "done" };
 +async function shepherdrLists(have) {
 +  let snap;
-+  try { const r = await fetch(SHEPHERDR); if (!r.ok) return []; snap = await r.json(); } catch { return []; }
-+  const branches = new Set(have.flatMap((l) => l.tasks.map((t) => t.branch)).filter(Boolean));
-+  const lists = new Map();
++  try { const r = await fetch(SHEPHERDR); if (!r.ok) return { lists: [], repos: new Set() }; snap = await r.json(); } catch { return { lists: [], repos: new Set() }; }
++  const doneBranch = new Set(have.flatMap((l) => (l.tasks ?? []).filter((t) => t.state === "done").map((t) => t.branch)).filter(Boolean));
++  const lists = new Map(), repos = new Set();
 +  for (const k of snap.tasks ?? []) {
-+    if (k.archived || (k.branch && branches.has(k.branch))) continue;
++    if (k.repo) repos.add(k.repo);
++    if (k.archived) continue;
 +    const place = (snap.places ?? []).find((p) => p.id === k.place);
 +    const m = /^(.*)-(\d+)$/.exec(k.id ?? "");
 +    if (!place || !m) continue;
++    const closed = k.workflow === "closed" || k.workflow === "merged";
++    const lagged = !closed && k.status !== "done" && k.branch && doneBranch.has(k.branch);
++    const status = lagged ? "done" : k.status;
 +    const l = lists.get(place.id) ?? { slug: `shepherdr-${place.name}`, folder: k.repo ?? place.folder ?? place.name, name: place.name, prefix: m[1], server: true, tasks: [] };
-+    l.tasks.push({ id: Number(m[2]), title: k.name, state: k.status === "done" ? "done" : k.status === "todo" ? "todo" : k.status === "queued" ? "queued" : "running",
-+      branch: k.branch, worktree: k.folder, srv: { status: k.status, why: k.report?.msg ?? k.agent?.note ?? k.state ?? null, progress: k.report?.progress ?? null } });
++    l.tasks.push({ id: Number(m[2]), title: k.name, state: status === "done" ? "done" : status === "todo" ? "todo" : status === "queued" ? "queued" : "running",
++      branch: k.branch, worktree: k.folder, srv: { id: k.id, chat: k.chat, status, closed, lagged, why: lagged ? "Done (herdr-task); still open in Shepherdr: Close it" : (k.report?.msg ?? k.agent?.note ?? k.state ?? null), progress: k.report?.progress ?? null } });
 +    lists.set(place.id, l);
 +  }
-+  return [...lists.values()];
++  return { lists: [...lists.values()], repos };
++}
++async function shepherdrAct(body) {
++  const r = await fetch(SHEPHERDR_ACTION, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
++  let j = {}; try { j = await r.json(); } catch {}
++  if (!r.ok || j.error) throw new Error(j.error ?? `Shepherdr said ${r.status}`);
++  return j;
 +}
 +function openShepherdr() {
 +  const modTabs = new Set(panes().filter((p) => p.mod === "shepherdr").map((p) => p.tab));
@@ -39,7 +54,7 @@
  // Every list in ~/.herdr/tasks on a machine is read with READ_LISTS and kept by taskLists (one
  // rule with herdr-task's: tasklists.js).
  // A list's task id: HAT-4 (a list from before prefixes has herdr-task's own: load()).
-@@ -167,6 +199,7 @@
+@@ -167,6 +214,7 @@
      const ms = machines().map((m) => m.name).filter(Boolean);
      for (const m of [...this.byMachine.keys()]) if (m && !ms.includes(m)) { this.byMachine.delete(m); this.raw.delete(m); this.merge(); cx.notify(); }
      for (const m of machines()) if (m.name && m.layout !== "unavailable") cx.spawn(async (cx) => this.load(cx, m.name));
@@ -47,7 +62,7 @@
    }
  
    // One machine's lists (null: this computer's).
-@@ -186,10 +219,12 @@
+@@ -186,10 +234,13 @@
        if (again) cx.spawn(async (cx) => this.load(cx, machine));
      }
      if (!machine) { this.ready = true; this.error = null; }
@@ -55,8 +70,9 @@
 -    this.raw.set(k, text);
 -    this.byMachine.set(k, taskLists(text)
 -      .map((d) => ({ ...d, machine, prefix: d.prefix || autoPrefix(d.folder), tasks: Array.isArray(d.tasks) ? d.tasks : [] })));
-+    const own = taskLists(text).map((d) => ({ ...d, machine, prefix: d.prefix || autoPrefix(d.folder), tasks: Array.isArray(d.tasks) ? d.tasks : [] }));
-+    const srv = machine ? [] : await shepherdrLists(own);
++    let own = taskLists(text).map((d) => ({ ...d, machine, prefix: d.prefix || autoPrefix(d.folder), tasks: Array.isArray(d.tasks) ? d.tasks : [] }));
++    const { lists: srv, repos } = machine ? { lists: [], repos: new Set() } : await shepherdrLists(own);
++    if (!machine) own = own.filter((d) => !repos.has(d.folder));
 +    const seen = text + JSON.stringify(srv);
 +    if (this.raw.get(k) === seen) { cx.notify(); return; }
 +    this.raw.set(k, seen);
@@ -64,18 +80,20 @@
      this.merge();
      cx.notify();
    }
-@@ -225,6 +260,10 @@
+@@ -225,6 +276,12 @@
    // A task's status (its section), why it needs the person, and its live agents. The same rules
    // as herdr-task's task_status(): its record, then its agents' own status.
    place(list, task) {
 +    if (task.srv) {
 +      const section = SRV_SECTION[task.srv.status] ?? "working";
-+      return { list, task, live: [], status: null, section, needs: section === "needs" ? "asks" : null, why: section === "needs" || section === "working" ? task.srv.why : null };
++      const note = this.srvNote?.get(task.srv.id)?.text;
++      return { list, task, live: [], status: null, section, needs: section === "needs" ? "asks" : null,
++        why: note ?? (section === "needs" || section === "working" || task.srv.lagged ? task.srv.why : null) };
 +    }
      const st = task.state;
      const live = st === "running" || st === "ready" ? this.live(list, task) : [];
      const loaded = machines().find((m) => (m.name ?? null) === (list.machine ?? null))?.layout !== "loading";
-@@ -797,6 +836,7 @@
+@@ -797,6 +854,7 @@
    // alone too); else its last agent's conversation, read from that agent's own log, with Resume
    // (mods/chat); a task that never started says why it waits. Nowhere in a layout without the view.
    target(p) {
@@ -83,12 +101,44 @@
      if (!threads()) return null;
      const { list, task } = p;
      const m = list.machine ?? null;
-@@ -824,7 +864,7 @@
+@@ -824,7 +882,7 @@
      return this.line(`task-${key}`, {
        go: this.target(p), glyph: this.glyph(p, w), ref: refOf(list, task), title: task.title, sub, left,
        dim: section === "done", selected: focused, where: this.whereOf(list.machine, placeName(list)),
 -      action: section === "ready" ? this.acceptButton(p, t) : null,
-+      action: section === "ready" && !task.srv ? this.acceptButton(p, t) : null,
++      action: task.srv ? this.srvButton(p) : section === "ready" ? this.acceptButton(p, t) : null,
        pin: this.shelved(p) ? null : { key, on: this.pins().has(key) },
      }, t);
    }
+@@ -862,6 +920,31 @@
+     return button(`accept-${key}`, busy ? "Accepting…" : "Accept", { kind: "primary", size: "xs", disabled: busy, onClick: () => this.accept(p) });
+   }
+ 
++  // A Shepherdr task's button: Close once it's ready or done (Close anyway after Shepherdr names what it
++  // holds), Archive once it's closed. The list rereads the server right after.
++  srvButton(p) {
++    const s = p.task.srv, note = (this.srvNote ??= new Map()).get(s.id);
++    if (!["ready", "done"].includes(p.section)) return null;
++    if (note?.busy) return button(`srv-${s.id}`, note.busy, { kind: "secondary", size: "xs", disabled: true });
++    if (s.closed) return button(`srv-${s.id}`, "Archive", { kind: "secondary", size: "xs", onClick: (_e, cx) => this.srvDo(s, { type: "archive", chat: s.chat, on: true }, "Archiving…", cx) });
++    const force = Boolean(note?.held);
++    return button(`srv-${s.id}`, force ? "Close anyway" : "Close", { kind: force ? "secondary" : "primary", size: "xs",
++      onClick: (_e, cx) => this.srvDo(s, { type: "close", chat: s.chat, ...(force ? { force: true } : {}) }, "Closing…", cx) });
++  }
++  srvDo(s, body, busy, cx) {
++    const notes = (this.srvNote ??= new Map());
++    notes.set(s.id, { busy });
++    cx.notify();
++    cx.spawn(async (cx) => {
++      try {
++        const r = await shepherdrAct(body);
++        if (r.ok === false && r.held?.length) notes.set(s.id, { held: true, text: `Holds ${r.held.join(" and ")}: Close anyway removes them` });
++        else notes.delete(s.id);
++      } catch (e) { notes.set(s.id, { text: `Shepherdr: ${e?.message ?? e}` }); }
++      this.raw.delete(""); await this.load(cx, null); cx.notify();
++    });
++  }
++
+   // Accept shows what you approve first: the Accept card (mods/accept-card) runs herdr-task
+   // accept from its own Accept; the list reads the change as it reads any.
+   accept(p, _cx) {
