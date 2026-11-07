@@ -113,6 +113,9 @@ type Config struct {
 	Think bool `json:"think"`
 	// Learn: after a turn, what the owner said about themselves or how you should talk goes to memory.
 	Learn bool `json:"learn"`
+	// DictationOnly: only `vc dictate` (LFM3-Audio writes speech down for a text box); no talking, brain,
+	// announcements, memory or recall, and only the audio model is started.
+	DictationOnly bool `json:"dictation_only"`
 	// Flavor: what vcd says on its own is said the secretary's way, varied (a cloud brain only).
 	Flavor bool `json:"flavor"`
 	// FlavorModel: the model for it ("": DeepSeek's chat with DeepSeek, else the brain's).

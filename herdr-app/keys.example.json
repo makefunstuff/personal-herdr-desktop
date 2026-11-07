@@ -1,7 +1,5 @@
 {
   "global": {
-    "cmd-shift-m": "voice.talk",
-    "cmd-shift-y": "voice.confirm",
     "alt-l": "voice.dictate"
   }
 }

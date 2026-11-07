@@ -2,8 +2,8 @@
 
 My customizations for the [Herdr](https://herdr.dev) desktop app on macOS and Linux: three themed layouts with their own
 art, icons and sounds, pull requests and
-reviews, documents Herdr draws natively, a time tracker, a Desk with a pomodoro timer and notes, and a voice
-assistant with local LFM3 speech (macOS). On Linux with [Omarchy](https://omarchy.org) the whole desktop follows the workbench
+reviews, documents Herdr draws natively, a time tracker, a Desk with a pomodoro timer and notes, and local
+dictation into agents with LFM3 (macOS). On Linux with [Omarchy](https://omarchy.org) the whole desktop follows the workbench
 look too.
 
 ## What's in it
@@ -62,14 +62,10 @@ apps and cursors, a workbench lock screen, a circuit-board / logic-analyzer scre
 console sounds for login, low battery and notifications. A theme-set hook switches lock view, cursors, menu and terminal
 fonts with the theme, so `omarchy theme set workbench` changes everything at once.
 
-**Voice computer** ([voice-computer/](voice-computer/)): a warm, talkative, slightly cheeky assistant for Herdr.
-LFM3-Audio-2B hears and speaks on this Mac (llama.cpp), the thinking is a configurable brain (DeepSeek's reasoner here,
-with the local LFM3-Omni-2B as a backup that loads only when needed), EmbeddingGemma recalls notes and memory.
-Talk with `cmd-shift-m`; dictate into any agent's chat or terminal with `Option+L`. Commands (focus agents, switch
-themes, show panels), "what needs me", reminders, pomodoro, Desk notes, web search, websites read with agent-browser,
-Mac apps read, opened and worked (through Claude Code with agent-desktop, always confirmed), messages to agents (always
-confirmed). It learns lasting facts and your preferences from talking (`memory.md`) and grows a persona from your
-conversations (`persona.md`), both plain files you can edit.
+**Dictation** ([voice-computer/](voice-computer/), macOS): `Option+L` in an agent's chat or terminal, speak, `Option+L`
+again: LFM3-Audio-2B writes it down on this Mac and it lands in the chat's box or at the terminal's cursor, never sent
+by itself. The voice computer runs in `dictation_only` mode for this; its assistant features (talking, a brain,
+announcements, memory) are still in the code but off.
 
 ## Install
 

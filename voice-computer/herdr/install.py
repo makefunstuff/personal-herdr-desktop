@@ -2,7 +2,8 @@
 """Puts the voice computer into Herdr: the voice mod, the mic glyphs and button in px-tabs (a marked
 block), the keys (only when free) and the voice pill as a floating block in the px layouts. Every file
 it changes is backed up beside itself first as FILE.bak.voice-computer.<time>. Run it again to update;
---uninstall takes it all out again (the backups stay)."""
+--uninstall takes it all out again (the backups stay); --dictation-only installs the mod for Option+L dictation
+only: no mic button, no talk or confirm keys."""
 import json, os, shutil, sys, time
 
 HOME = os.path.expanduser("~/.config/herdr-app")
@@ -132,7 +133,17 @@ def layouts(uninstall):
 
 if __name__ == "__main__":
     un = "--uninstall" in sys.argv
+    # --dictation-only: the voice mod for Option+L dictation, with no mic button and no talk or confirm keys
+    # (the daemon runs with "dictation_only": true in its config).
+    dictation = "--dictation-only" in sys.argv
+    if dictation:
+        TALK = dict(KEYS)
+        KEYS.clear()
+        KEYS.update(TALK)
+        keys_json(True)  # the talk and confirm keys out, where they're still ours
+        KEYS.clear()
+        KEYS.update({"alt-l": "voice.dictate"})
     mod(un)
-    tab_bars(un)
+    tab_bars(un or dictation)
     keys_json(un)
     layouts(un)

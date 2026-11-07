@@ -1,10 +1,10 @@
 #!/bin/sh
 # personal-herdr-desktop: install the themes, mods and Desk into Herdr desktop, herdr-doc, the Neovim
-# theme, typing sounds and the time tracker; on macOS also the voice computer, on Linux (with Omarchy) the workbench theme.
+# theme, typing sounds and the time tracker; on macOS also dictation (Option+L, the voice computer in dictation-only mode), on Linux (with Omarchy) the workbench theme.
 # Everything it replaces is backed up next to the original as <file>.bak.<time>. Re-run after pulling to update.
 #
 #   ./install.sh               everything for this system
-#   ./install.sh --no-voice    macOS: without the voice computer
+#   ./install.sh --no-voice    macOS: without dictation
 #   ./install.sh --timetrack   also start the time tracker (samples the focused window's title every 30 s, kept locally)
 set -e
 REPO="$(cd "$(dirname "$0")" && pwd)"
@@ -85,7 +85,7 @@ for name in ("workbench", "fortress", "pixel"):
 PY
 
 if [ "$VOICE" = 1 ]; then
-echo "== Herdr: voice keys (only where free)"
+echo "== Herdr: the dictation key (only where free)"
 python3 - "$SRC/keys.example.json" "$DST/keys.json" "$TS" <<'PY'
 import json, os, shutil, sys
 want = json.load(open(sys.argv[1]))["global"]; path = sys.argv[2]
@@ -111,9 +111,17 @@ if [ "$VOICE" = 1 ]; then
   vstamp="$HOME/.local/share/personal-herdr-desktop/herdr-voice.sha256"; mkdir -p "$(dirname "$vstamp")"
   if [ -d "$HOME/Applications/Herdr Voice.app" ] && [ ! -f "$vstamp" ]; then echo "$vsum" > "$vstamp"; fi
   [ "$(cat "$vstamp" 2>/dev/null)" = "$vsum" ] || { (cd "$REPO/voice-computer" && sh install/app.sh) && echo "$vsum" > "$vstamp"; }
-  # Its pill floating in the px layouts, its keys where free, the mic in px-tabs (voice-computer/herdr/install.py).
-  python3 "$REPO/voice-computer/herdr/install.py"
-  echo "  Models download on first start (LFM3-Omni-2B, LFM3-Audio-2B, EmbeddingGemma: about 3.5 GB)."
+  # Dictation only: Option+L writes speech down into an agent's chat or terminal (LFM3-Audio on this Mac). The voice
+  # assistant (talking, brain, announcements, memory) stays off: dictation_only in its config, no mic button or talk keys.
+  python3 "$REPO/voice-computer/herdr/install.py" --dictation-only
+  python3 - "$HOME/.config/herdr-voice-computer/config.json" <<'PY3'
+import json, os, sys
+p = sys.argv[1]; os.makedirs(os.path.dirname(p), exist_ok=True)
+c = json.load(open(p)) if os.path.exists(p) else {}
+if "dictation_only" not in c:
+    c["dictation_only"] = True; json.dump(c, open(p, "w"), indent=2); print("  dictation only (dictation_only in", p + ")")
+PY3
+  echo "  The speech model downloads on first start (LFM3-Audio-2B, about 1.5 GB)."
 fi
 
 L="$REPO/linux"; M="$REPO/macos"; O="$REPO/omarchy"
@@ -204,7 +212,7 @@ Done. Next:
   - macOS: allow herdr-keyclick under Input Monitoring and herdr-timetrack under Accessibility (System Settings > Privacy & Security).
 EOF
 [ "$VOICE" = 1 ] && cat <<'EOF'
-  - Voice: `vc start`, then cmd-shift-m to talk. macOS asks once whether "Herdr Voice" may use the microphone: Allow.
+  - Dictation: `vc start`, then Option+L in an agent's chat or terminal (again to finish). macOS asks once whether "Herdr Voice" may use the microphone: Allow.
     Web search through DeepSeek: set "search": {"deepseek_key_file": "<path>"} in ~/.config/herdr-voice-computer/config.json.
 EOF
 exit 0

@@ -183,6 +183,10 @@ func New(cfg config.Config, logger *log.Logger) *Daemon {
 
 // Run checks the backend now and every few seconds, until ctx ends.
 func (d *Daemon) Run(ctx context.Context) {
+	if d.cfg.DictationOnly { // dictation only: no watchers, announcements or index, just the health of the audio model
+		d.runHealth(ctx)
+		return
+	}
 	go d.watchReplies(ctx)
 	go d.playReplies(ctx)
 	go d.watchAgents(ctx)
@@ -196,6 +200,11 @@ func (d *Daemon) Run(ctx context.Context) {
 			}
 		}
 	}()
+	d.runHealth(ctx)
+}
+
+// runHealth checks the backend now and every few seconds, until ctx ends.
+func (d *Daemon) runHealth(ctx context.Context) {
 	t := time.NewTicker(5 * time.Second)
 	defer t.Stop()
 	for i := 0; ; i++ {
