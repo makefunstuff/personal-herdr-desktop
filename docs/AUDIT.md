@@ -57,6 +57,21 @@ before the second sample.
 **Fix:** remember that a `/proc/stat` `cpu` line was read; that is what makes
 the machine Linux, independent of having a delta yet.
 
+### 4. A task's sidebar line can show an already answered question
+
+**File:** `herdr-app/mods/px-spaces/main.js` (`shpTasks`)
+
+The Tasks panel and the poller's toasts pick the first *open* question
+(`openAsk`), but the sidebar picks `asks[0]` whatever its state. A task with an
+answered first question and a newer open one shows the old words in the
+sidebar.
+
+**Reproduce:** give an shp task two questions, answer the first, leave the
+second open; the sidebar keeps showing the first. The Tasks panel shows the
+second.
+
+**Fix:** use the same "first open ask, else the first ask" rule in the sidebar.
+
 ## Dead code and duplication (refactor)
 
 - `px-tabs`: `find` and `findNode` are the same layout walk; use one.
