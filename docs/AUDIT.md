@@ -92,35 +92,36 @@ second.
 
 Only `*.js`; SVG and JSON are assets, not code.
 
-| mod | lines |
-|---|---:|
-| desk | 298 |
-| px-agents | 525 |
-| px-changes (`main.js` + `hl.js`) | 502 |
-| px-chrome | 86 |
-| px-confirm | 52 |
-| px-doc | 262 |
-| px-files | 172 |
-| px-help | 91 |
-| px-machine-add | 368 |
-| px-menu | 162 |
-| px-new-menu | 74 |
-| px-pane | 221 |
-| px-peek | 76 |
-| px-picker | 236 |
-| px-pr | 608 |
-| px-projects (`main.js` + `shp.js`) | 462 |
-| px-prompt | 50 |
-| px-reviews | 307 |
-| px-spaces | 504 |
-| px-status (`main.js` + `poll.js`) | 200 |
-| px-sysmon | 169 |
-| px-tabs | 143 |
-| px-time | 142 |
-| px-toast | 37 |
-| px-usage | 155 |
-| px-worktree | 367 |
-| voice | 171 |
+| mod | before | after |
+|---|---:|---:|
+| desk | 298 | 296 |
+| px-agents | 525 | 525 |
+| px-changes (`main.js` + `hl.js`) | 502 | 502 |
+| px-chrome | 86 | 86 |
+| px-confirm | 52 | 52 |
+| px-doc | 262 | 261 |
+| px-files | 172 | 172 |
+| px-help | 91 | 91 |
+| px-machine-add | 368 | 368 |
+| px-menu | 162 | 162 |
+| px-new-menu | 74 | 74 |
+| px-pane | 221 | 221 |
+| px-peek | 76 | 76 |
+| px-picker | 236 | 236 |
+| px-pr | 608 | 602 |
+| px-projects (`main.js` + `shp.js`) | 462 | 459 |
+| px-prompt | 50 | 50 |
+| px-reviews | 307 | 302 |
+| px-spaces | 504 | 505 |
+| px-status (`main.js` + `poll.js`) | 200 | 200 |
+| px-sysmon | 169 | 171 |
+| px-tabs | 143 | 134 |
+| px-time | 142 | 142 |
+| px-toast | 37 | 37 |
+| px-usage | 155 | 155 |
+| px-worktree | 367 | 369 |
+| voice | 171 | 171 |
+| **total** | **6440** | **6419** |
 
 `bin/task-workspaces.py` (665) and `bin/shepherdr-spaces.py` (189) are the
 Shepherdr-specific services; they are only touched where a bug requires it.
