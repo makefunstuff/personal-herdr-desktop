@@ -96,6 +96,12 @@ func (d *Daemon) Dispatch(req Request) any {
 	if req.At > 0 {
 		at = time.UnixMilli(req.At)
 	}
+	if d.cfg.DictationOnly {
+		switch req.Cmd {
+		case "ptt", "talk", "turn", "text", "say", "confirm", "decline":
+			return map[string]any{"ok": false, "error": "the voice computer runs for dictation only (dictation_only in its config)"}
+		}
+	}
 	switch req.Cmd {
 	case "ptt":
 		switch req.Arg {

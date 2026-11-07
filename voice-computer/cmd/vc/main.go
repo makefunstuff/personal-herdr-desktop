@@ -344,11 +344,20 @@ func runDaemon() {
 	os.MkdirAll(config.StateDir(), 0o700)
 	os.WriteFile(pidPath(), []byte(strconv.Itoa(os.Getpid())), 0o600)
 	children := llama.Children(cfg)
+	if cfg.DictationOnly { // only the audio model: dictation needs nothing else
+		keep := children[:0]
+		for _, c := range children {
+			if c.Name == "audio" {
+				keep = append(keep, c)
+			}
+		}
+		children = keep
+	}
 	logf := func(f string, a ...any) { logger.Printf(f, a...) }
 	// A cloud brain with the local one as its fallback: the local brain holds no memory until a request
 	// falls back to it, and stops after ten idle minutes.
 	var backup *llama.Lazy
-	if cloud := !strings.Contains(cfg.Chat.URL, "127.0.0.1") && !strings.Contains(cfg.Chat.URL, "localhost"); cloud {
+	if cloud := !strings.Contains(cfg.Chat.URL, "127.0.0.1") && !strings.Contains(cfg.Chat.URL, "localhost"); cloud && !cfg.DictationOnly {
 		for i, c := range children {
 			if c.Name == "brain" && strings.Contains(cfg.ChatFallback.URL, ":"+strconv.Itoa(c.Port)) {
 				backup = &llama.Lazy{Child: c, Idle: 10 * time.Minute}

@@ -7,7 +7,7 @@
 
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { panes, props, run, theme, home, shared, terminals, exec, hc, notify } from "herdr";
+import { panes, props, run, theme, home, shared, terminals, exec, hc, notify, readTextFile, appHome } from "herdr";
 
 // Shepherdr 3.0's Chat / Terminal switch (as its pane-chat header has it), for agent panes in these layouts:
 // Chat puts the `chat` mod in the agent pane's spot and parks the agent's terminal (labelled herdr.chat=<chat pane>,
@@ -37,7 +37,12 @@ function folder(cwd) {
 }
 
 export default class Pane extends View {
-  init() { this.hovered = false; }
+  init(_p, cx) {
+    this.hovered = false;
+    // The CHAT | TERM switch only while a chat mod is installed (Shepherdr's was; without one it has nowhere to go).
+    this.hasChat = false;
+    readTextFile(`${appHome()}/mods/${CHAT}/dictate.js`).then((x) => { this.hasChat = Boolean(x); cx?.notify?.(); }).catch(() => {});
+  }
 
   me() {
     return panes().find((p) => p.pane === props()?.pane);
@@ -146,7 +151,7 @@ export default class Pane extends View {
   // a 1px border, the accent border and a small accent dot on the one shown.
   switcher(t, p) {
     const isChat = p.mod === CHAT;
-    if (!isChat && !chatty(p)) return null;
+    if (!this.hasChat || (!isChat && !chatty(p))) return null;
     const cell = (id, label, on, fn) => h_flex().id(`${id}-${p.pane}`).h(20).px(7).gap(6).items_center().flex_none().rounded(0)
       .border_1().border_color(on ? t.accent : t.border).font_semibold().text_size(10.5)
       .text_color(on ? t.foreground : t.muted).when(!on, (s) => s.cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground)))
