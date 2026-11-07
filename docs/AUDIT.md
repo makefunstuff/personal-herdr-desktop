@@ -106,13 +106,13 @@ Only `*.js`; SVG and JSON are assets, not code.
 | px-spaces | 504 | 505 |
 | px-status (`main.js` + `poll.js`) | 200 | 200 |
 | px-sysmon | 169 | 169 |
-| px-tabs | 143 | 138 |
+| px-tabs | 143 | 140 |
 | px-time | 142 | 142 |
 | px-toast | 37 | 37 |
 | px-usage | 155 | 155 |
-| px-worktree | 367 | 373 |
+| px-worktree | 367 | 374 |
 | voice | 171 | 171 |
-| **total** | **6440** | **6425** |
+| **total** | **6440** | **6428** |
 
 `bin/task-workspaces.py` (665) and `bin/shepherdr-spaces.py` (189) are the
 Shepherdr-specific services; they are only touched where a bug requires it.
@@ -120,8 +120,10 @@ Shepherdr-specific services; they are only touched where a bug requires it.
 ## Checks
 
 - `node --experimental-vm-modules herdr-app/tests/fixes.mjs` loads the real
-  `desk` and `px-worktree` source with stubs and checks the fixed behaviours:
-  the past-day note file, the main-checkout guard, and the sidebar's open ask.
+  `desk`, `px-worktree` and `px-spaces` source with stubs and checks the fixed
+  behaviours: the past-day note file, the main-checkout guard, a locked
+  worktree on Linux (space stays open), a Windows busy folder (close, retry
+  once), a remove that works first time (close once), and the sidebar's open ask.
 - `herdr-app check herdr-app/mods/<mod>` for all 27 mods.
 - `~/.config/herdr-app/bin/sync-shared --check`.
 - Installed with `./install.sh`, then before/after screenshots of the sidebar,

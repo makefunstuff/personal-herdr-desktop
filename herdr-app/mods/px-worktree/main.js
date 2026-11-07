@@ -3,7 +3,7 @@
 
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, Scrollbar } from "gpui-base";
-import { run, props, closeOverlay, theme, spaces, panes, exec, home, window } from "herdr";
+import { run, props, closeOverlay, theme, spaces, panes, exec, home } from "herdr";
 
 // Where a space is now: its first terminal's live folder, else where it was made.
 function place(s) {
@@ -224,7 +224,7 @@ export default class Worktree extends View {
     const args = ["worktree", "remove", ...(force ? ["--force"] : []), this.repo.top];
     let r = await git(this.repo.main, args, this.on);
     if (r.ok) run("space.close", { id: s.id, confirmed: true });
-    else if (window()?.platform === "windows") {
+    else if (/^[A-Za-z]:/.test(this.repo.top)) {
       // Terminals first: a shell sitting in the folder keeps it busy on Windows.
       run("space.close", { id: s.id, confirmed: true });
       r = await git(this.repo.main, args, this.on);

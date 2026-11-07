@@ -74,10 +74,11 @@ const fsStub = (context) => new vm.SyntheticModule(["readFile", "writeFile", "mk
 
 // Worktree: removing a repo's main checkout must not close its space.
 {
-  const calls = [];
-  const run = (name, args) => calls.push([name, args]);
+  const events = [];
+  const run = (name) => events.push(name);
+  const base = { props: () => ({ action: "remove" }), run };
   const Worktree = await load("px-worktree/main.js", {
-    herdr: herdr({ props: () => ({ action: "remove" }), run }),
+    herdr: herdr(base),
     "gpui-base": (context) => new vm.SyntheticModule(["v_flex", "h_flex", "InputState", "Input", "Scrollbar"], function () {
       for (const n of ["v_flex", "h_flex", "Input", "Scrollbar"]) this.setExport(n, () => undefined);
       this.setExport("InputState", { new: () => ({ on: () => {}, focus: () => {} }) });
@@ -85,41 +86,47 @@ const fsStub = (context) => new vm.SyntheticModule(["readFile", "writeFile", "mk
   });
   const w = new Worktree();
   w.repo = { linked: false, top: "/repo", main: "/repo", name: "repo" };
+  w.busy = false; w.dirty = false; w.unpushed = []; w.on = null;
+  w.space = () => ({ id: "sp1" });
   const why = await w.remove();
   assert.match(why, /main checkout/);
-  assert.deepEqual(calls.filter(([n]) => n === "space.close"), [], "main checkout's space must stay open");
+  assert.deepEqual(events, [], "main checkout: nothing is run");
 
-  // A locked linked worktree on Linux: the remove fails, but its space stays open.
-  const make = async (platform, failFirst) => {
+  const make = async (top, failFirst) => {
+    events.length = 0;
     let removes = 0;
     const exec = async (_cmd, args) => {
       const a = args.join(" ");
       if (a.includes("worktree remove")) {
-        removes++;
-        return removes === 1 && failFirst ? { code: 1, stdout: "", stderr: "fatal: '/repo/wt' is locked" } : { code: 0, stdout: "", stderr: "" };
+        removes++; events.push("remove");
+        return removes === 1 && failFirst ? { code: 1, stdout: "", stderr: "fatal: is locked" } : { code: 0, stdout: "", stderr: "" };
       }
       if (a.includes("config")) return { code: 1, stdout: "", stderr: "no submodules" };
       if (a.includes("rev-parse --absolute-git-dir")) return { code: 0, stdout: "/repo/.git", stderr: "" };
       return { code: 0, stdout: "", stderr: "" };
     };
-    const W = await load("px-worktree/main.js", { herdr: herdr({ exec, run, window: () => ({ platform }) }) });
+    const W = await load("px-worktree/main.js", { herdr: herdr({ ...base, exec }) });
     const x = new W();
-    x.repo = { linked: true, top: "/repo/wt", main: "/repo", name: "repo" };
+    x.repo = { linked: true, top, main: "/repo", name: "repo" };
     x.busy = false; x.dirty = false; x.unpushed = []; x.on = null;
     x.space = () => ({ id: "sp1" });
-    return { x, why: await x.remove(), removes };
+    return { why: await x.remove(), removes };
   };
   {
-    calls.length = 0;
-    const { why: reason } = await make("linux", true);
+    const { why: reason } = await make("/repo/wt", true);
     assert.match(reason, /locked/);
-    assert.deepEqual(calls.filter(([n]) => n === "space.close"), [], "a failed remove on Linux must not close the space");
+    assert.deepEqual(events, ["remove"], "a failed remove on Linux leaves the space open");
   }
   {
-    calls.length = 0;
-    const { why: reason } = await make("windows", true);
+    const { why: reason } = await make("C:/wt", true);
     assert.equal(reason, "");
-    assert.equal(calls.filter(([n]) => n === "space.close").length, 1, "Windows closes once, then retries");
+    assert.deepEqual(events, ["remove", "space.close", "remove"], "Windows closes once, between the two removes");
+  }
+  {
+    const { why: reason, removes } = await make("/repo/wt", false);
+    assert.equal(reason, "");
+    assert.equal(removes, 1);
+    assert.deepEqual(events, ["remove", "space.close"], "a remove that works closes the space once");
   }
 }
 
