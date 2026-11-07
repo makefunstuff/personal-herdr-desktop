@@ -92,18 +92,21 @@ export default class Tabs extends View {
     const enabled = picked.includes("jira") || !findNode(root, "jira") ? picked : [...picked, "jira"];
     const reviews = shared("reviews.summary")?.requested ?? 0;
     const needs = (shared("shp")?.places ?? []).flatMap(p => p.tasks).filter(k => k.status === "needs").length;
+    const has = (id) => Boolean(findNode(root, id)), icon = (n) => `mods/px-chrome/${GS()}/${n}.svg`;
+    // The side panels this layout offers: Files/Changes are the welcome's choice,
+    // the rest show where the layout has their node. Tasks is ours over shp.
     const panels = [
-      ["files", "Files", "files.svg", enabled.includes("files")],
-      ["changes", "Changes", "git-compare.svg", enabled.includes("changes")],
-      ["pr", "PR", "git-pull-request.svg", Boolean(findNode(root, "pr"))],
-      ["reviews", reviews > 0 ? `Reviews ${reviews}` : "Reviews", "check.svg", Boolean(findNode(root, "reviews"))],
-      ["gcp", "GCP", "server.svg", Boolean(findNode(root, "gcp"))],
-      ["stacks", "Stacks", "layers.svg", Boolean(findNode(root, "stacks"))],
-      ["docs", "Docs", "file-text.svg", Boolean(findNode(root, "docs"))],
-      ["time", "Time", "clock.svg", Boolean(findNode(root, "time"))],
+      ["files", "Files", icon("files"), enabled.includes("files")],
+      ["changes", "Changes", icon("git-compare"), enabled.includes("changes")],
+      ["pr", "PR", icon("git-pull-request"), has("pr")],
+      ["reviews", reviews > 0 ? `Reviews ${reviews}` : "Reviews", icon("check"), has("reviews")],
+      ["gcp", "GCP", icon("server"), has("gcp")],
+      ["stacks", "Stacks", icon("layers"), has("stacks")],
+      ["docs", "Docs", icon("file-text"), has("docs")],
+      ["time", "Time", icon("clock"), has("time")],
       ["jira", "Jira", "mods/px-jira/g/jira.svg", enabled.includes("jira")],
-      ["tasks", needs ? `Tasks ${needs}` : "Tasks", "circle-check.svg", Boolean(findNode(root, "tasks"))],
-      ["artifacts", "Artifacts", "layers.svg", Boolean(findNode(root, "artifacts"))],
+      ["tasks", needs ? `Tasks ${needs}` : "Tasks", icon("circle-check"), has("tasks")],
+      ["artifacts", "Artifacts", icon("layers"), has("artifacts")],
     ];
     this.syncPanel(space, panel, body, enabled);
     const panelButton = (id, label, icon) => {
@@ -129,8 +132,7 @@ export default class Tabs extends View {
       .when(this.pairMod, el => { const tab = focused()?.tab, open = panes().find(p => p.mod === "pair" && p.tab === tab);
         return el.child(barButton(t, "panel-pair", Boolean(open), `mods/px-chrome/${GS()}/users.svg`, "Pair")
         .on_click(() => open ? run("pane.close", { pane: open.pane }) : run("pane.split", { direction: "right", mod: "pair" }))); })
-      .children(panels.filter(([, , , on]) => on).map(([id, label, icon]) =>
-        panelButton(id, label, icon.startsWith("mods/") ? icon : `mods/px-chrome/${GS()}/${icon}`)))
+      .children(panels.filter(([, , , on]) => on).map(([id, label, icon]) => panelButton(id, label, icon)))
       .when(w?.buttons, el => el.child(button("minimize", w.platform === "windows" ? svg(`mods/px-tabs/${GS()}/win-min.svg`).size(16) : "−", () => run("window.minimize")))
         .child(button("maximize", w.platform === "windows" ? svg(`mods/px-tabs/${GS()}/${w.maximized ? "win-restore" : "win-max"}.svg`).size(16) : "□", () => run("window.maximize")))
         .child(button("close-window", w.platform === "windows" ? svg(`mods/px-tabs/${GS()}/win-close.svg`).size(16) : svg(`mods/px-pane/${GS()}/close.svg`).size(13), () => run("window.close"))));

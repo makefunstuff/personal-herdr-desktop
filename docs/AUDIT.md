@@ -12,7 +12,7 @@ shows both blocks (before screenshot in the proof artifact).
 
 ### 1. Removing a worktree from a repo's main checkout closes its space first
 
-**File:** `herdr-app/mods/px-worktree/main.js` (`_pxRender`, `key`, `work`, `remove`)
+**File:** `herdr-app/mods/px-worktree/main.js` (`_pxRender`, `remove`)
 
 The dialog marks a main checkout as blocked and says so, but the check is only
 used for the hint: Enter in the dialog still calls `work()`, which calls
@@ -27,8 +27,9 @@ failed, no worktree was removed.
 
 **Fix:** one guard in `remove()` refuses a folder that is not a linked
 worktree before any side effect. For a real worktree, remove is tried before
-the space is closed; only a remove that fails (a shell keeps the folder busy on
-Windows) closes the space and tries once more.
+the space is closed. Only on Windows, where a shell sitting in the folder can
+keep the folder busy, a failed remove closes the space and tries once more;
+elsewhere a failed remove leaves the space open and returns git's reason.
 
 ### 2. A note typed while viewing a past day is written to today
 
@@ -121,7 +122,7 @@ Shepherdr-specific services; they are only touched where a bug requires it.
 - `node --experimental-vm-modules herdr-app/tests/fixes.mjs` loads the real
   `desk` and `px-worktree` source with stubs and checks the fixed behaviours:
   the past-day note file, the main-checkout guard, and the sidebar's open ask.
-- `herdr-app check <mod>` for all 27 mods.
+- `herdr-app check herdr-app/mods/<mod>` for all 27 mods.
 - `~/.config/herdr-app/bin/sync-shared --check`.
 - Installed with `./install.sh`, then before/after screenshots of the sidebar,
   tab bar, pane header, Monitor, Tasks, PR and Changes (proof artifact).

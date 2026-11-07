@@ -88,6 +88,39 @@ const fsStub = (context) => new vm.SyntheticModule(["readFile", "writeFile", "mk
   const why = await w.remove();
   assert.match(why, /main checkout/);
   assert.deepEqual(calls.filter(([n]) => n === "space.close"), [], "main checkout's space must stay open");
+
+  // A locked linked worktree on Linux: the remove fails, but its space stays open.
+  const make = async (platform, failFirst) => {
+    let removes = 0;
+    const exec = async (_cmd, args) => {
+      const a = args.join(" ");
+      if (a.includes("worktree remove")) {
+        removes++;
+        return removes === 1 && failFirst ? { code: 1, stdout: "", stderr: "fatal: '/repo/wt' is locked" } : { code: 0, stdout: "", stderr: "" };
+      }
+      if (a.includes("config")) return { code: 1, stdout: "", stderr: "no submodules" };
+      if (a.includes("rev-parse --absolute-git-dir")) return { code: 0, stdout: "/repo/.git", stderr: "" };
+      return { code: 0, stdout: "", stderr: "" };
+    };
+    const W = await load("px-worktree/main.js", { herdr: herdr({ exec, run, window: () => ({ platform }) }) });
+    const x = new W();
+    x.repo = { linked: true, top: "/repo/wt", main: "/repo", name: "repo" };
+    x.busy = false; x.dirty = false; x.unpushed = []; x.on = null;
+    x.space = () => ({ id: "sp1" });
+    return { x, why: await x.remove(), removes };
+  };
+  {
+    calls.length = 0;
+    const { why: reason } = await make("linux", true);
+    assert.match(reason, /locked/);
+    assert.deepEqual(calls.filter(([n]) => n === "space.close"), [], "a failed remove on Linux must not close the space");
+  }
+  {
+    calls.length = 0;
+    const { why: reason } = await make("windows", true);
+    assert.equal(reason, "");
+    assert.equal(calls.filter(([n]) => n === "space.close").length, 1, "Windows closes once, then retries");
+  }
 }
 
 // Sidebar: a task in "needs" shows its open ask, not an earlier answered one.

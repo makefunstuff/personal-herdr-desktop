@@ -3,7 +3,7 @@
 
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, Scrollbar } from "gpui-base";
-import { run, props, closeOverlay, theme, spaces, panes, exec, home } from "herdr";
+import { run, props, closeOverlay, theme, spaces, panes, exec, home, window } from "herdr";
 
 // Where a space is now: its first terminal's live folder, else where it was made.
 function place(s) {
@@ -223,11 +223,12 @@ export default class Worktree extends View {
     const force = this.dirty || mods.length > 0;
     const args = ["worktree", "remove", ...(force ? ["--force"] : []), this.repo.top];
     let r = await git(this.repo.main, args, this.on);
-    // Terminals first: a shell sitting in the folder keeps it busy on Windows.
-    // A remove that failed for another reason has not lost the space yet: close
-    // it and try once more, then say why if it still won't go.
-    if (!r.ok) { run("space.close", { id: s.id, confirmed: true }); r = await git(this.repo.main, args, this.on); }
-    else run("space.close", { id: s.id, confirmed: true });
+    if (r.ok) run("space.close", { id: s.id, confirmed: true });
+    else if (window()?.platform === "windows") {
+      // Terminals first: a shell sitting in the folder keeps it busy on Windows.
+      run("space.close", { id: s.id, confirmed: true });
+      r = await git(this.repo.main, args, this.on);
+    }
     return r.ok ? "" : r.err || "git worktree remove failed.";
   }
 
