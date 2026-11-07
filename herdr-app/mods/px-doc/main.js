@@ -5,7 +5,7 @@
 import * as fs from "fs/promises";
 import { View, div, image } from "gpui-kit";
 import { v_flex, h_flex, TextView } from "gpui-base";
-import { theme, shared, home, props, run, exec, settings, watchFolder, notify, window } from "herdr";
+import { theme, shared, home, props, run, exec, settings, watchFolder, window } from "herdr";
 // The desktop's opener for links and files: open on macOS, xdg-open on Linux.
 const OPENER = () => (window()?.platform === "macos" ? "open" : "xdg-open");
 
@@ -64,7 +64,6 @@ export default class Doc extends View {
   mono() { return settings().font_family ?? "JetBrains Mono"; }
 
   block(t, b, key) {
-    const c = (x) => div().w_full().child(x);
     switch (b.type) {
       case "heading": {
         const lv = b.level ?? 2;

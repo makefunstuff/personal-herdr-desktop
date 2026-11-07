@@ -45,9 +45,6 @@ export function subtitle(task) {
 
 export const openAsk = (task) => (task.asks ?? []).find((a) => !a.closed && !a.answered) ?? task.asks?.[0] ?? null;
 
-// The sidebar's and Monitor's state word for a task: shp's honest states, in Herdr's status words.
-export const herdrStatus = (s) => ({ needs: "blocked", working: "working", merging: "working", ready: "ready", done: "done" })[s] ?? "idle";
-
 // The task's Herdr space on its machine: the recorded workspace id wins (a remote one reads
 // "machine/id"), else the space named "<ID> · <title>".
 export function workspaceOf(task, all = spaces()) {

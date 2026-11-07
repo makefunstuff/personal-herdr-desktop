@@ -32,7 +32,7 @@ const cmd = (c, arg) => api("/cmd", { cmd: c, arg: arg ?? "" }).catch(() => null
 // The state word the mic shows: off, ready, listening, thinking, speaking, confirm.
 const word = (s) => !s ? "off" : s.card ? "confirm" : s.state;
 const WORDS = { off: "Off", ready: "Ready", listening: "Listening", thinking: "Thinking", speaking: "Speaking", confirm: "Needs you" };
-export const color = (t, w) => ({ off: t.dim, ready: t.muted, listening: t.accent, thinking: t.working, speaking: t.done, confirm: t.blocked })[w] ?? t.dim;
+const color = (t, w) => ({ off: t.dim, ready: t.muted, listening: t.accent, thinking: t.working, speaking: t.done, confirm: t.blocked })[w] ?? t.dim;
 
 export default class Voice extends View {
   init(_props, cx) {

@@ -1,6 +1,6 @@
 import { View, div, svg } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { spaces, agents, theme, run, window, shared, panes, layout, exec, home } from "herdr";
+import { spaces, agents, theme, run, window, shared, panes, layout } from "herdr";
 import { startPoller } from "./poll.js";
 const GS = () => ({ workbench: "gw", fortress: "gf" })[shared("layout")] ?? "g";
 // The workbench layout writes its labels in capitals (DESK, BUS 1 · THIS COMPUTER).
