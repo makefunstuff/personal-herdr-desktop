@@ -9,7 +9,7 @@ import { exec, home, theme, shared } from "herdr";
 const caps = (x) => (shared("layout") === "workbench" ? String(x).toUpperCase() : x);
 const GS = () => ({ workbench: "gw", fortress: "gf" })[shared("layout")] ?? "g";
 // A segmented meter like the Monitor's: thin cells, grey until it nears its limit (amber), then red.
-export function meterBar(t, pct, color, cells = 24) {
+function meterBar(t, pct, color, cells = 24) {
   const on = Math.round((Math.max(0, Math.min(100, pct ?? 0)) / 100) * cells);
   return h_flex().w_full().gap(1).children(Array.from({ length: cells }, (_, i) => div().flex_1().h(5).bg(i < on ? color : t.raised)));
 }

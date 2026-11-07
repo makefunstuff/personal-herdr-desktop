@@ -10,15 +10,6 @@ const barButton = (t, id, on, icon, label) => h_flex().id(id).h(22).px(7).gap(6)
   .hover(s => s.bg(t.hover).text_color(t.foreground)).on_mouse_down("left", (_e, cx) => cx.stop_propagation())
   .child(svg(icon).size(12)).child(caps(label)).when(on, e => e.child(div().size(5).bg(t.accent)));
 
-function find(node, id) {
-  if (node?.id === id) return node;
-  for (const child of node?.children ?? []) {
-    const found = find(child, id);
-    if (found) return found;
-  }
-  return null;
-}
-
 // The layout node called id, if this layout has it (the Shepherdr panel's toggle shows only then).
 const findNode = (n, id) => { if (!n || typeof n !== "object") return null; if (n.id === id) return n;
   for (const c of n.children ?? []) { const f = findNode(c, id); if (f) return f; } return null; };
@@ -90,12 +81,12 @@ export default class Tabs extends View {
         .when(c.status === "blocked" || c.status === "done", el => el.child(div().size(6).rounded(0).bg(t[c.status])))
         .when(c.active, el => el.child(div().id(`close-${c.id}`).text_color(t.dim).on_mouse_down("left", stop).on_click((_e, cx) => { cx.stop_propagation(); run("tab.close", { id: c.id }); }).child(svg(`mods/px-pane/${GS()}/close.svg`).size(12))));
     };
-    const root = layout(), sidebar = find(root, "sidebar"), w = window();
+    const root = layout(), sidebar = findNode(root, "sidebar"), w = window();
     // Old saved rails and a dragged-narrow sidebar can be smaller than the window buttons.
     const lightsPadding = w?.platform === "macos" && w.titlebar === "none" && !w.fullscreen && root?.traffic_lights
       ? Math.max(10, (root.traffic_lights[0] + 64) / settings().zoom - (sidebar?.hidden ? 0 : sidebar?.size?.px ?? 0))
       : 10;
-    const panel = find(root, "panel"), body = find(root, "panel-body");
+    const panel = findNode(root, "panel"), body = findNode(root, "panel-body");
     // The welcome's "workspace.panels" picks Files/Changes; the Jira panel is always on where the layout has one.
     const picked = shared("workspace.panels") ?? ["files", "changes"];
     const enabled = picked.includes("jira") || !findNode(layout(), "jira") ? picked : [...picked, "jira"];

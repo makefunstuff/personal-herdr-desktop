@@ -8,7 +8,7 @@
 import * as fs from "fs/promises";
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
-import { exec, theme, shared, setShared, run, spaces, focused, agents, hc, notify, playSound, home, window } from "herdr";
+import { exec, theme, shared, setShared, run, spaces, agents, hc, notify, playSound, home, window } from "herdr";
 // The desktop's opener for links and files: open on macOS, xdg-open on Linux.
 const OPENER = () => (window()?.platform === "macos" ? "open" : "xdg-open");
 
@@ -163,11 +163,6 @@ export default class Reviews extends View {
       } catch (e) { this.error = String(e?.message ?? e); }
       finally { this.loading = false; cx.notify(); }
     });
-  }
-
-  agent() {
-    const space = spaces().find((s) => s.active), tab = focused()?.tab;
-    return agents().filter((a) => a.space === space?.id).sort((a, b) => (b.tab === tab) - (a.tab === tab) || a.tab_index - b.tab_index)[0] ?? null;
   }
 
   review(p, cx) {

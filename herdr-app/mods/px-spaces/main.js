@@ -60,11 +60,11 @@ const FALLBACK = 60000;
 const MARK = { ansi6: "#22a99a", ansi3: "#e3814f", ansi4: "#5b8def", ansi5: "#8b7cf6", ansi2: "#3fae6a", ansi1: "#d9649a" };
 
 // A space speaks up only when something in it needs you.
-export function glyph(status) {
+function glyph(status) {
   return status === "blocked" || status === "done" ? "●" : "·";
 }
 
-export function tone(t, status) {
+function tone(t, status) {
   return t[status] ?? t.unknown;
 }
 

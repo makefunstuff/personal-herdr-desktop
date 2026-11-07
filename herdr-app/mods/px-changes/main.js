@@ -1,5 +1,5 @@
 import { View, div } from "gpui-kit";
-import { v_flex, h_flex, InputState, Input, Scrollbar, v_virtual_list } from "gpui-base";
+import { v_flex, h_flex, InputState, Input } from "gpui-base";
 import { spaces, panes, focused, exec, readTextFile, watchFolder, theme, settings, agents, hc, shared, setShared } from "herdr";
 import { langOf, tokens, colours } from "./hl.js";
 // The workbench layout writes its headings and labels in capitals (SPACES, AGENTS, DESK ...).
