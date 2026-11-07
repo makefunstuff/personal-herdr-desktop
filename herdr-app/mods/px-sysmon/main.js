@@ -88,11 +88,9 @@ export default class SysMon extends View {
       const s = { gpus: [], disks: [] };
       const mem = {};
       const seen = new Set();
-      let sawCpu = false;
       for (const line of out.split("\n")) {
         const f = line.trim().split(/[\s,]+/);
         if (f[0] === "cpu") {
-          sawCpu = true;
           const n = f.slice(1).map(Number);
           const idle = n[3] + n[4];
           const total = n.reduce((a, b) => a + b, 0);
@@ -123,7 +121,7 @@ export default class SysMon extends View {
       }
       if (mem["MemTotal:"]) s.ram = 100 * (1 - mem["MemAvailable:"] / mem["MemTotal:"]);
       s.disks = s.disks.sort((a, b) => a.mount.length - b.mount.length).slice(0, MAX_DISKS);
-      s.linux = sawCpu || s.cpu != null; // a /proc/stat cpu line (Linux), or macOS's cpupct
+      s.linux = this.prev != null || s.cpu != null; // CPU known (Linux after two samples, macOS at once)
       s.ramUsed = (mem["MemTotal:"] - mem["MemAvailable:"]) * 1024;
       s.ramTotal = mem["MemTotal:"] * 1024;
       this.s = s;

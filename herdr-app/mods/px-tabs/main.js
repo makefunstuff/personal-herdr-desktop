@@ -86,10 +86,25 @@ export default class Tabs extends View {
     const lightsPadding = w?.platform === "macos" && w.titlebar === "none" && !w.fullscreen && root?.traffic_lights
       ? Math.max(10, (root.traffic_lights[0] + 64) / settings().zoom - (sidebar?.hidden ? 0 : sidebar?.size?.px ?? 0))
       : 10;
-    const panel = findNode(root, "panel"), body = findNode(root, "panel-body");
+    const panel = findNode(root, "panel"), body = findNode(root, "panel-body"), shep = findNode(root, "shepherdr");
     // The welcome's "workspace.panels" picks Files/Changes; the Jira panel is always on where the layout has one.
     const picked = shared("workspace.panels") ?? ["files", "changes"];
-    const enabled = picked.includes("jira") || !findNode(layout(), "jira") ? picked : [...picked, "jira"];
+    const enabled = picked.includes("jira") || !findNode(root, "jira") ? picked : [...picked, "jira"];
+    const reviews = shared("reviews.summary")?.requested ?? 0;
+    const needs = (shared("shp")?.places ?? []).flatMap(p => p.tasks).filter(k => k.status === "needs").length;
+    const panels = [
+      ["files", "Files", "files.svg", enabled.includes("files")],
+      ["changes", "Changes", "git-compare.svg", enabled.includes("changes")],
+      ["pr", "PR", "git-pull-request.svg", Boolean(findNode(root, "pr"))],
+      ["reviews", reviews > 0 ? `Reviews ${reviews}` : "Reviews", "check.svg", Boolean(findNode(root, "reviews"))],
+      ["gcp", "GCP", "server.svg", Boolean(findNode(root, "gcp"))],
+      ["stacks", "Stacks", "layers.svg", Boolean(findNode(root, "stacks"))],
+      ["docs", "Docs", "file-text.svg", Boolean(findNode(root, "docs"))],
+      ["time", "Time", "clock.svg", Boolean(findNode(root, "time"))],
+      ["jira", "Jira", "mods/px-jira/g/jira.svg", enabled.includes("jira")],
+      ["tasks", needs ? `Tasks ${needs}` : "Tasks", "circle-check.svg", Boolean(findNode(root, "tasks"))],
+      ["artifacts", "Artifacts", "layers.svg", Boolean(findNode(root, "artifacts"))],
+    ];
     this.syncPanel(space, panel, body, enabled);
     const panelButton = (id, label, icon) => {
       const on = panel && !panel.hidden && body?.active === id;
@@ -103,7 +118,7 @@ export default class Tabs extends View {
       .on_mouse_up("left", () => { this.pressed = null; })
       .on_scroll_wheel(e => { if (Math.abs(e.delta.y) >= 1) run(e.delta.y > 0 ? "tab.prev" : "tab.next"); })
       .child(h_flex().id("tab-scroll").flex_1().min_w(0).h_full().items_center().gap(3).overflow_x_scrollbar().children(shown.map(item)))
-      .when(Boolean(findNode(layout(), "shepherdr")), el => { const shown = !findNode(layout(), "shepherdr").hidden;
+      .when(Boolean(shep), el => { const shown = !shep.hidden;
         return el.child(div().id("shep-toggle").size(26).flex_none().flex().items_center().justify_center().cursor_pointer()
           .text_color(shown ? t.accent : t.dim).when(shown, e => e.bg(t.selected)).hover(st => st.bg(t.hover).text_color(t.foreground))
           .on_click(() => run("layout.toggle", { id: "shepherdr" }))
@@ -114,19 +129,8 @@ export default class Tabs extends View {
       .when(this.pairMod, el => { const tab = focused()?.tab, open = panes().find(p => p.mod === "pair" && p.tab === tab);
         return el.child(barButton(t, "panel-pair", Boolean(open), `mods/px-chrome/${GS()}/users.svg`, "Pair")
         .on_click(() => open ? run("pane.close", { pane: open.pane }) : run("pane.split", { direction: "right", mod: "pair" }))); })
-      .when(enabled.includes("files"), el => el.child(panelButton("files", "Files", `mods/px-chrome/${GS()}/files.svg`)))
-      .when(enabled.includes("changes"), el => el.child(panelButton("changes", "Changes", `mods/px-chrome/${GS()}/git-compare.svg`)))
-      .when(Boolean(findNode(layout(), "pr")), el => el.child(panelButton("pr", "PR", `mods/px-chrome/${GS()}/git-pull-request.svg`)))
-      .when(Boolean(findNode(layout(), "reviews")), el => el.child(panelButton("reviews", (shared("reviews.summary")?.requested ?? 0) > 0 ? `Reviews ${shared("reviews.summary").requested}` : "Reviews", `mods/px-chrome/${GS()}/check.svg`)))
-      .when(Boolean(findNode(layout(), "gcp")), el => el.child(panelButton("gcp", "GCP", `mods/px-chrome/${GS()}/server.svg`)))
-      .when(Boolean(findNode(layout(), "stacks")), el => el.child(panelButton("stacks", "Stacks", `mods/px-chrome/${GS()}/layers.svg`)))
-      .when(Boolean(findNode(layout(), "docs")), el => el.child(panelButton("docs", "Docs", `mods/px-chrome/${GS()}/file-text.svg`)))
-      .when(Boolean(findNode(layout(), "time")), el => el.child(panelButton("time", "Time", `mods/px-chrome/${GS()}/clock.svg`)))
-      .when(enabled.includes("jira"), el => el.child(panelButton("jira", "Jira", "mods/px-jira/g/jira.svg")))
-      // Tasks: our projects manager (mods/px-projects over shp), with how many need you; Artifacts: Shepherdr's, where installed.
-      .when(Boolean(findNode(layout(), "tasks")), el => { const n = (shared("shp")?.places ?? []).flatMap(p => p.tasks).filter(k => k.status === "needs").length;
-        return el.child(panelButton("tasks", n ? `Tasks ${n}` : "Tasks", `mods/px-chrome/${GS()}/circle-check.svg`)); })
-      .when(Boolean(findNode(layout(), "artifacts")), el => el.child(panelButton("artifacts", "Artifacts", `mods/px-chrome/${GS()}/layers.svg`)))
+      .children(panels.filter(([, , , on]) => on).map(([id, label, icon]) =>
+        panelButton(id, label, icon.startsWith("mods/") ? icon : `mods/px-chrome/${GS()}/${icon}`)))
       .when(w?.buttons, el => el.child(button("minimize", w.platform === "windows" ? svg(`mods/px-tabs/${GS()}/win-min.svg`).size(16) : "−", () => run("window.minimize")))
         .child(button("maximize", w.platform === "windows" ? svg(`mods/px-tabs/${GS()}/${w.maximized ? "win-restore" : "win-max"}.svg`).size(16) : "□", () => run("window.maximize")))
         .child(button("close-window", w.platform === "windows" ? svg(`mods/px-tabs/${GS()}/win-close.svg`).size(16) : svg(`mods/px-pane/${GS()}/close.svg`).size(13), () => run("window.close"))));

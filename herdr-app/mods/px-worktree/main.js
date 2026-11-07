@@ -14,6 +14,7 @@ function place(s) {
 
 // Checkouts go to <ROOT>/<repo>/<branch, slashes as dashes>.
 const ROOT = (home) => `${home}/.herdr/worktrees`;
+const NOT_WORKTREE = "This is the repository's main checkout, not a worktree.";
 // Home as ~ (git says C:/Users/x where Windows says C:\Users\x).
 const tilde = (path, userHome) => {
   const [p, h] = [path, userHome].map((s) => s.replace(/\\/g, "/"));
@@ -163,13 +164,12 @@ export default class Worktree extends View {
   }
 
   go(cx) {
-    if (this.busy || !this.repo || (props()?.action === "remove" && !this.repo.linked)) return;
+    if (this.busy || !this.repo) return;
     cx.spawn(async (cx) => this.work(cx));
   }
 
   async work(cx) {
     if (this.busy || !this.repo) return;
-    if (props().action === "remove" && !this.repo.linked) { this.error = "This is the repository's main checkout, not a worktree."; cx.notify(); return; }
     this.busy = true;
     this.error = "";
     cx.notify();
@@ -208,7 +208,7 @@ export default class Worktree extends View {
   }
 
   async remove() {
-    if (!this.repo.linked) return "This is the repository's main checkout, not a worktree.";
+    if (!this.repo.linked) return NOT_WORKTREE;
     const s = this.space();
     const status = await git(this.repo.top, ["--no-optional-locks", "-c", "core.fsmonitor=false", "status", "--porcelain"], this.on);
     if (!status.ok) return status.err || "git status failed.";
@@ -220,10 +220,14 @@ export default class Worktree extends View {
     this.dirty ||= status.out !== "";
     this.unpushed = [...new Set([...this.unpushed, ...unpushed])];
     if (changed) return "It changed since this opened. Enter again removes it anyway.";
-    // Terminals first: a shell sitting in the folder keeps it busy on Windows.
-    run("space.close", { id: s.id, confirmed: true });
     const force = this.dirty || mods.length > 0;
-    const r = await git(this.repo.main, ["worktree", "remove", ...(force ? ["--force"] : []), this.repo.top], this.on);
+    const args = ["worktree", "remove", ...(force ? ["--force"] : []), this.repo.top];
+    let r = await git(this.repo.main, args, this.on);
+    // Terminals first: a shell sitting in the folder keeps it busy on Windows.
+    // A remove that failed for another reason has not lost the space yet: close
+    // it and try once more, then say why if it still won't go.
+    if (!r.ok) { run("space.close", { id: s.id, confirmed: true }); r = await git(this.repo.main, args, this.on); }
+    else run("space.close", { id: s.id, confirmed: true });
     return r.ok ? "" : r.err || "git worktree remove failed.";
   }
 
@@ -326,7 +330,7 @@ export default class Worktree extends View {
           ? `${this.folder ? tilde(this.folder, this.userHome) : "This folder"} is not in a git repository.`
           : remove
             ? !r.linked
-              ? "This is the repository's main checkout, not a worktree."
+              ? NOT_WORKTREE
               : `Closes the space and deletes ${tilde(r.top, this.userHome)}. The branch stays.`
             : `A new space on a checkout in ${tilde(ROOT(this.userHome), this.userHome)}/${r.name}/. A branch that exists is checked out; a new one starts from here.`;
     const blocked = !r || (remove && !r.linked);

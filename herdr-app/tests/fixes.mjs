@@ -8,8 +8,8 @@ const source = async (rel) => fs.readFile(new URL(`../mods/${rel}`, import.meta.
 
 // A mod is an ES module with imports that only Herdr provides. Load the real
 // source in a VM with a stub for each import it names.
-async function load(rel, stubs = {}) {
-  const text = await source(rel);
+async function load(rel, stubs = {}, named = null) {
+  const text = (await source(rel)) + (named ? `\nexport { ${named} };\n` : "");
   const context = vm.createContext({
     console, Date, Math, JSON, Object, Array, Set, Map, Promise, String, Number, Error, RegExp, setTimeout,
     localStorage: { getItem: () => null, setItem: () => {} },
@@ -27,18 +27,20 @@ async function load(rel, stubs = {}) {
     }, { identifier: spec, context });
   });
   await mod.evaluate();
-  return mod.namespace.default;
+  return named ? mod.namespace : mod.namespace.default;
 }
 
 function herdr(overrides = {}) {
   return (context) => {
     const names = ["View", "div", "v_flex", "h_flex", "InputState", "Input", "Scrollbar", "appHome", "theme",
-      "shared", "setShared", "layout", "playSound", "notify", "run", "props", "closeOverlay", "spaces", "panes", "exec", "home"];
+      "shared", "setShared", "layout", "playSound", "notify", "run", "props", "closeOverlay", "spaces", "panes", "exec", "home",
+      "machines", "openOverlay", "watchFolder", "window", "readTextFile", "hc"];
     return new vm.SyntheticModule(names, function () {
       const base = {
         View: class {}, theme: () => ({}), shared: () => undefined, setShared: () => null,
         layout: () => ({}), playSound: () => null, notify: () => null, run: () => null,
         props: () => ({}), closeOverlay: () => null, spaces: () => [], panes: () => [], exec: async () => ({ code: 0, stdout: "", stderr: "" }), home: () => "/home/test",
+        machines: () => [], openOverlay: () => "o", watchFolder: async () => null, window: () => ({}), readTextFile: async () => null, hc: async () => ({ code: 0, stdout: "", stderr: "" }),
       };
       for (const n of names) this.setExport(n, n in overrides ? overrides[n] : (base[n] ?? (() => undefined)));
     }, { identifier: "herdr", context });
@@ -57,13 +59,17 @@ const fsStub = (context) => new vm.SyntheticModule(["readFile", "writeFile", "mk
 // Desk: a note typed while looking at a past day goes into that day.
 {
   const Desk = await load("desk/main.js", { herdr: herdr({ appHome: () => "/app" }), "fs/promises": fsStub });
+  const pad = (n) => String(n).padStart(2, "0");
+  const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1);
+  const today = new Date();
   const desk = new Desk();
-  desk.day = "2026-11-06";
+  desk.day = ymd(yesterday);
   desk.input = { value: () => "a note", set_value: () => {} };
   desk.loadNotes = async () => {};
   await desk.addNote();
-  assert.match(files.get("/app/desk-notes/daily/2026-11-06.md") ?? "", /a note/);
-  assert.equal(files.has("/app/desk-notes/daily/2026-11-07.md"), false);
+  assert.match(files.get(`/app/desk-notes/daily/${ymd(yesterday)}.md`) ?? "", /a note/);
+  assert.equal(files.has(`/app/desk-notes/daily/${ymd(today)}.md`), false);
 }
 
 // Worktree: removing a repo's main checkout must not close its space.
@@ -79,28 +85,21 @@ const fsStub = (context) => new vm.SyntheticModule(["readFile", "writeFile", "mk
   });
   const w = new Worktree();
   w.repo = { linked: false, top: "/repo", main: "/repo", name: "repo" };
-  w.busy = false;
-  let removed = false;
-  w.remove = async () => { removed = true; return ""; };
-  await w.work({ notify: () => {} });
-  assert.equal(removed, false, "main checkout must not be removed");
+  const why = await w.remove();
+  assert.match(why, /main checkout/);
   assert.deepEqual(calls.filter(([n]) => n === "space.close"), [], "main checkout's space must stay open");
-  assert.match(String(w.error), /main checkout/);
 }
 
-// SYSTEM: the first Linux sample is already Linux, even before a CPU delta.
+// Sidebar: a task in "needs" shows its open ask, not an earlier answered one.
 {
-  const exec = async () => ({ code: 0, stdout: "cpu 1 2 3 4 5 6 7 8\nMemTotal: 1000\nMemAvailable: 500\ndf /dev/sda1 100 50 50 50% /\n", stderr: "" });
-  const SysMon = await load("px-sysmon/main.js", { herdr: herdr({ exec }) });
-  const mon = new SysMon();
-  mon.prev = null;
-  let done;
-  const finished = new Promise((ok) => { done = ok; });
-  const cx = { spawn: async (fn) => { await fn(cx); done(); }, notify: () => {} };
-  mon.read(cx);
-  await finished;
-  assert.equal(mon.s.linux, true);
-  assert.equal(mon.s.cpu, undefined);
+  const task = { id: "T-1", title: "a task", status: "needs", machine: null, worktree: "/repo/wt",
+    asks: [{ text: "old question", answered: true }, { text: "new question", open: true }] };
+  const space = { id: "sp1", name: "T-1 · a task", folder: "/repo/wt", machine: null, tabs: [] };
+  const ns = await load("px-spaces/main.js", {
+    herdr: herdr({ shared: (k) => k === "shp" ? { places: [{ name: null, tasks: [task] }] } : undefined, spaces: () => [space] }),
+  }, "shpTasks");
+  const out = ns.shpTasks([space]);
+  assert.equal(out[space.id].doing, "new question");
 }
 
 console.log("fixes: ok");

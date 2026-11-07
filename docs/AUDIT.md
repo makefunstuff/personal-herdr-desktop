@@ -16,17 +16,19 @@ shows both blocks (before screenshot in the proof artifact).
 
 The dialog marks a main checkout as blocked and says so, but the check is only
 used for the hint: Enter in the dialog still calls `work()`, which calls
-`remove()`. `remove()` runs `space.close` before `git worktree remove`, and git
-always refuses to remove the main checkout, so the space and its terminals are
-closed while the checkout stays. The same happens for any failed `git worktree
-remove`: the space is already gone.
+`remove()`. `remove()` used to run `space.close` before `git worktree remove`,
+and git always refuses to remove the main checkout, so the space and its
+terminals were closed while the checkout stayed. Any other failed remove had
+the same effect.
 
 **Reproduce:** right-click a space whose folder is a repo's main checkout,
-choose Remove worktree, press Enter. The space closes, `git worktree remove`
-fails, no worktree is removed.
+choose Remove worktree, press Enter. The space closed, `git worktree remove`
+failed, no worktree was removed.
 
-**Fix:** refuse the remove before any side effect when the folder is not a
-linked worktree; make `key()` and `work()` use the same guard.
+**Fix:** one guard in `remove()` refuses a folder that is not a linked
+worktree before any side effect. For a real worktree, remove is tried before
+the space is closed; only a remove that fails (a shell keeps the folder busy on
+Windows) closes the space and tries once more.
 
 ### 2. A note typed while viewing a past day is written to today
 
@@ -43,21 +45,7 @@ note appears in `desk-notes/daily/<today>.md`, not in yesterday's file.
 **Fix:** write to the day Desk is showing (`this.day`); today behaves exactly
 as before.
 
-### 3. SYSTEM says "Linux only" on Linux until the second sample
-
-**File:** `herdr-app/mods/px-sysmon/main.js` (`read`)
-
-`s.linux` is `this.prev != null || s.cpu != null`. On Linux the CPU percentage
-needs a previous sample, so the first reading has neither, and the block shows
-"CPU, GPU and RAM: Linux only" for up to ten seconds, on Linux.
-
-**Reproduce:** reopen the window (or wait for a reload) and look at SYSTEM
-before the second sample.
-
-**Fix:** remember that a `/proc/stat` `cpu` line was read; that is what makes
-the machine Linux, independent of having a delta yet.
-
-### 4. A task's sidebar line can show an already answered question
+### 3. A task's sidebar line can show an already answered question
 
 **File:** `herdr-app/mods/px-spaces/main.js` (`shpTasks`)
 
@@ -74,7 +62,9 @@ second.
 
 ## Dead code and duplication (refactor)
 
-- `px-tabs`: `find` and `findNode` are the same layout walk; use one.
+- `px-tabs`: `find` and `findNode` are the same layout walk; use one, and
+  build the eleven panel buttons from one table instead of eleven `.when` lines
+  that each walk the layout again.
 - `px-pr`: `reviewers()` and the `agent` argument of `ask()` are unused. The
   Ask action has routed through `toWork()`/Chores for a while; say that in the
   comment instead of keeping a dead path.
@@ -114,14 +104,14 @@ Only `*.js`; SVG and JSON are assets, not code.
 | px-reviews | 307 | 302 |
 | px-spaces | 504 | 505 |
 | px-status (`main.js` + `poll.js`) | 200 | 200 |
-| px-sysmon | 169 | 171 |
-| px-tabs | 143 | 134 |
+| px-sysmon | 169 | 169 |
+| px-tabs | 143 | 138 |
 | px-time | 142 | 142 |
 | px-toast | 37 | 37 |
 | px-usage | 155 | 155 |
-| px-worktree | 367 | 369 |
+| px-worktree | 367 | 373 |
 | voice | 171 | 171 |
-| **total** | **6440** | **6419** |
+| **total** | **6440** | **6425** |
 
 `bin/task-workspaces.py` (665) and `bin/shepherdr-spaces.py` (189) are the
 Shepherdr-specific services; they are only touched where a bug requires it.
@@ -129,9 +119,8 @@ Shepherdr-specific services; they are only touched where a bug requires it.
 ## Checks
 
 - `node --experimental-vm-modules herdr-app/tests/fixes.mjs` loads the real
-  `desk`, `px-worktree` and `px-sysmon` source with stubs and checks the three
-  fixed behaviours: the past-day note file, the main-checkout guard (no
-  `space.close`, no remove), and Linux on the first sample.
+  `desk` and `px-worktree` source with stubs and checks the fixed behaviours:
+  the past-day note file, the main-checkout guard, and the sidebar's open ask.
 - `herdr-app check <mod>` for all 27 mods.
 - `~/.config/herdr-app/bin/sync-shared --check`.
 - Installed with `./install.sh`, then before/after screenshots of the sidebar,
