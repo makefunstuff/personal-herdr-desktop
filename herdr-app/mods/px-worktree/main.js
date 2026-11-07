@@ -163,12 +163,13 @@ export default class Worktree extends View {
   }
 
   go(cx) {
-    if (this.busy || !this.repo) return;
+    if (this.busy || !this.repo || (props()?.action === "remove" && !this.repo.linked)) return;
     cx.spawn(async (cx) => this.work(cx));
   }
 
   async work(cx) {
     if (this.busy || !this.repo) return;
+    if (props().action === "remove" && !this.repo.linked) { this.error = "This is the repository's main checkout, not a worktree."; cx.notify(); return; }
     this.busy = true;
     this.error = "";
     cx.notify();
@@ -207,6 +208,7 @@ export default class Worktree extends View {
   }
 
   async remove() {
+    if (!this.repo.linked) return "This is the repository's main checkout, not a worktree.";
     const s = this.space();
     const status = await git(this.repo.top, ["--no-optional-locks", "-c", "core.fsmonitor=false", "status", "--porcelain"], this.on);
     if (!status.ok) return status.err || "git status failed.";
