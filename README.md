@@ -1,9 +1,9 @@
 # personal-herdr-desktop
 
 My customizations for the [Herdr](https://herdr.dev) desktop app on macOS and Linux: three themed layouts with their own
-art, icons and sounds, Shepherdr inside Herdr (panel, task board, operations monitor, native artifacts), pull requests and
-reviews, documents Herdr draws natively, a time tracker, a Desk with a pomodoro timer and notes, and a local voice
-assistant on LFM3 models (macOS). On Linux with [Omarchy](https://omarchy.org) the whole desktop follows the workbench
+art, icons and sounds, pull requests and
+reviews, documents Herdr draws natively, a time tracker, a Desk with a pomodoro timer and notes, and a voice
+assistant with local LFM3 speech (macOS). On Linux with [Omarchy](https://omarchy.org) the whole desktop follows the workbench
 look too.
 
 ## What's in it
@@ -19,25 +19,14 @@ alert sounds together (`ctrl-shift-l` cycles them).
 
 All art and sounds are original and drawn as vectors, so they stay sharp on Retina screens.
 
-**Shepherdr in Herdr** (`mods/shepherdr`), for one or more [Shepherdr](https://github.com/eliasstravik/shepherdr) instances:
-- A panel (crook button in the tab bar) and a full tab: spaces with folding of quiet ones, what needs you (including
-  open questions), chats with answer buttons, a task board per space (needs you / working / ready / backlog with
-  start estimates / done / archived), estimates from agents' own reports.
-- **Operations Monitor**: machines as aligned meter cells (CPU, memory, disk, each GPU with its VRAM, Mac GPU), one
-  animated node per running task (pixel robot, progress conveyor, ETA), queue, ticker.
-- **Artifacts** in `herdr.doc/1` ([spec](herdr-app/shepherdr-doc/SPEC.md)): agents write JSON blocks, Herdr draws them
-  natively, the stock `render.html` draws them on the web and phone.
-- `bin/shepherdr-desktop-sync.py` shows a Shepherdr's agents as Herdr spaces and tabs.
-- Other machines' Shepherdrs: `~/.config/herdr-app/shepherdr-sources.json` (see the example file).
-
 **Desk** (`mods/desk`, DESK button in the status bar): pomodoro timer with a pixel tomato, focus stats and a 14-day
 chart, today's note with clickable checkboxes; a timer chip in the status bar.
 
 **Pull requests** (`mods/px-pr`, PR in the tab bar): the PR of the branch you're on, or one picked in Reviews, in the
 panel. Description, open threads by file with the code they're on, resolved ones folded, reviews and comments as one
 timeline; react, reply, comment, approve or request changes; FILES shows every diff, click a line to draft a comment and
-submit them as one review; CHECKS lists failing ones first. ASK sends a comment to the agent working on that branch
-(found through Shepherdr 3.0 tasks), or to one agent in a "Chores" space for everything that isn't your own work.
+submit them as one review; CHECKS lists failing ones first. ASK sends a comment to the agent working on that branch,
+or to one agent in a "Chores" space for everything that isn't your own work.
 
 **Reviews** (`mods/px-reviews`): PRs waiting for your review, assigned to you, reviewed by you and your own, from one
 GitHub query; a toast for new requests; REVIEW hands one to the agent for a summary and draft comments.
@@ -53,14 +42,6 @@ tables, todos. `herdr-doc new|check|export|list`; a Claude Code skill tells agen
 (app, title, Herdr space and tab) every 30 s: active and idle time, by category, by Herdr space, by issue key, the day as
 10-minute slots, the last 7 days. Opt-in: `./install.sh --timetrack` (Linux: a user service; macOS: a LaunchAgent,
 `macos/src/herdr-timetrack.swift`, that reads window titles once you allow it under Accessibility).
-
-**Shepherdr 3.x patches** (`herdr-app/shepherdr-patches`, applied by the installer when Shepherdr 3.0.0's or 3.1's mods
-are there, to the mods and to Shepherdr's own `lib/` and `core/` sources so `shepherdr doctor` stays whole). With 3.x
-installed, the px layouts use its tab bar (`tabs-tasks`, which runs its service, inbox and new spaces' Assistants), with
-this repo's PR, Reviews, Docs, Time, Desk and Pair buttons patched in; its own `shepherdr` layout gets those panels too: its views follow the px layouts' look (square corners, the theme's status colours, capitals on workbench), and
-its chat works with Herdr zoomed (measured sizes converted to the units widths are given in, so the column is centred
-and the newest messages stay in view), shows the agent's reasoning as folded "Thinking" lines, no longer goes blank while a folded (Show more) reply
-is on screen (a handler the list refuses), and recovers from a blank list without re-laying out every message.
 
 **Sidebar**: AI usage limits (`mods/px-usage`, needs `herdr-usage`) and CPU / GPU / RAM / disk (`mods/px-sysmon`).
 
@@ -81,11 +62,14 @@ apps and cursors, a workbench lock screen, a circuit-board / logic-analyzer scre
 console sounds for login, low battery and notifications. A theme-set hook switches lock view, cursors, menu and terminal
 fonts with the theme, so `omarchy theme set workbench` changes everything at once.
 
-**Voice computer** ([voice-computer/](voice-computer/)): a warm, talkative assistant for Herdr on local models through
-llama.cpp: LFM3-Omni-2B brain, LFM3-Audio-2B ears and voice, EmbeddingGemma recall. Talk with `cmd-shift-m`.
-Commands (focus agents, switch themes, show panels), briefings and "what needs me", reminders, pomodoro, notes,
-web search (DeepSeek, or DuckDuckGo/Wikipedia), long-term memory, stateful conversation, delegation to Shepherdr
-coordinators with the right notes attached, always asking before it sends anything.
+**Voice computer** ([voice-computer/](voice-computer/)): a warm, talkative, slightly cheeky assistant for Herdr.
+LFM3-Audio-2B hears and speaks on this Mac (llama.cpp), the thinking is a configurable brain (DeepSeek's reasoner here,
+with the local LFM3-Omni-2B as a backup that loads only when needed), EmbeddingGemma recalls notes and memory.
+Talk with `cmd-shift-m`; dictate into any agent's chat or terminal with `Option+L`. Commands (focus agents, switch
+themes, show panels), "what needs me", reminders, pomodoro, Desk notes, web search, websites read with agent-browser,
+Mac apps read, opened and worked (through Claude Code with agent-desktop, always confirmed), messages to agents (always
+confirmed). It learns lasting facts and your preferences from talking (`memory.md`) and grows a persona from your
+conversations (`persona.md`), both plain files you can edit.
 
 ## Install
 
@@ -105,11 +89,11 @@ Microsoft assets are fetched on your machine, never stored in a repo.
 
 ## Platforms
 
-Both: themes, layouts, mods, art, sounds, the document formats, the sync script, herdr-doc, typing sounds and the time
+Both: themes, layouts, mods, art, sounds, the document formats, herdr-doc, typing sounds and the time
 tracker (macOS: Swift LaunchAgents in `macos/`, built with `swiftc`; allow herdr-keyclick under Input Monitoring and
 herdr-timetrack under Accessibility; `cmd-alt-k` mutes the clicks). macOS only: the voice computer (`Herdr Voice.app`,
 `afplay`/`rec`, `osascript`, Homebrew). Linux only: Omarchy theme. The
-installer drops layout panels whose mods aren't installed (Shepherdr 3.0's tasks, chat and artifacts come with it).
+installer drops layout panels whose mods aren't installed.
 
 ## Licence
 

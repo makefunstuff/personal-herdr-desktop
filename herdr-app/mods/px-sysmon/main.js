@@ -8,7 +8,7 @@ import { exec, theme, shared } from "herdr";
 // The workbench layout writes its headings and labels in capitals (SPACES, AGENTS, BUS 1 · THIS COMPUTER).
 const caps = (x) => (shared("layout") === "workbench" ? String(x).toUpperCase() : x);
 
-const EVERY = 3000;
+const EVERY = 10000; // one sample (ps, vm_stat, df, ioreg) costs ~0.4 s of CPU on a Mac: every 10 s, not 3
 const MAX_DISKS = 4;
 
 // One line per reading: "cpu …" (/proc/stat), Mem*, "df …" (local disks), "gpu …" (NVIDIA), "amd …" (sysfs).

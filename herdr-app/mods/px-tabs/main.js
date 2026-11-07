@@ -1,6 +1,6 @@
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { spaces, panes, run, openOverlay, theme, window, shared, layout, settings, readTextFile, appHome, focused } from "herdr";
+import { spaces, panes, run, openOverlay, theme, window, shared, layout, settings, readTextFile, appHome, focused, nextCommand, exec, home } from "herdr";
 const GS = () => ({ workbench: "gw", fortress: "gf" })[shared("layout")] ?? "g";
 // The workbench layout writes its labels in capitals (DESK, SHEPHERDR, MONITOR in the status bar).
 const caps = (x) => (shared("layout") === "workbench" ? String(x).toUpperCase() : x);
@@ -29,6 +29,11 @@ export default class Tabs extends View {
     this.pairMod = false; // Pair's panel is installed (mods/pair): its button shows
     cx.spawn(async (cx) => { this.pairMod = Boolean(await readTextFile(`${appHome()}/mods/pair/main.js`).catch(() => null)); cx.notify(); });
     this.panels = JSON.parse(localStorage.getItem("panels") ?? "{}");
+    // cmd-alt-k (keys.json: px-tabs.typing-toggle) mutes and unmutes the typing sounds (herdr-keyclick).
+    cx.spawn(async () => { for (;;) {
+      const c = await nextCommand();
+      if (c === "typing-toggle") await exec(`${home()}/.local/bin/herdr-typing-toggle`, []).catch(() => {});
+    } });
   }
 
   // The side panel is remembered per space: switching shows that space's choice
