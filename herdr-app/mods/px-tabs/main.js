@@ -132,8 +132,9 @@ export default class Tabs extends View {
       .when(Boolean(findNode(layout(), "docs")), el => el.child(panelButton("docs", "Docs", `mods/px-chrome/${GS()}/file-text.svg`)))
       .when(Boolean(findNode(layout(), "time")), el => el.child(panelButton("time", "Time", `mods/px-chrome/${GS()}/clock.svg`)))
       .when(enabled.includes("jira"), el => el.child(panelButton("jira", "Jira", "mods/px-jira/g/jira.svg")))
-      // Shepherdr 3.0's panels, where this layout has them (its tasks and artifacts stacks)
-      .when(Boolean(findNode(layout(), "tasks")), el => el.child(panelButton("tasks", "Tasks", `mods/px-chrome/${GS()}/circle-check.svg`)))
+      // Tasks: our projects manager (mods/px-projects over shp), with how many need you; Artifacts: Shepherdr's, where installed.
+      .when(Boolean(findNode(layout(), "tasks")), el => { const n = (shared("shp")?.places ?? []).flatMap(p => p.tasks).filter(k => k.status === "needs").length;
+        return el.child(panelButton("tasks", n ? `Tasks ${n}` : "Tasks", `mods/px-chrome/${GS()}/circle-check.svg`)); })
       .when(Boolean(findNode(layout(), "artifacts")), el => el.child(panelButton("artifacts", "Artifacts", `mods/px-chrome/${GS()}/layers.svg`)))
       .when(w?.buttons, el => el.child(button("minimize", w.platform === "windows" ? svg(`mods/px-tabs/${GS()}/win-min.svg`).size(16) : "−", () => run("window.minimize")))
         .child(button("maximize", w.platform === "windows" ? svg(`mods/px-tabs/${GS()}/${w.maximized ? "win-restore" : "win-max"}.svg`).size(16) : "□", () => run("window.maximize")))

@@ -175,102 +175,10 @@
                     },
                     {
                       "id": "tasks",
-                      "type": "stack",
-                      "children": [
-                        {
-                          "id": "tasks-list",
-                          "type": "block",
-                          "content": {
-                            "mod": "tasks"
-                          }
-                        },
-                        {
-                          "id": "tasks-thread",
-                          "type": "column",
-                          "children": [
-                            {
-                              "id": "tasks-thread-head",
-                              "type": "block",
-                              "content": {
-                                "mod": "chat",
-                                "props": {
-                                  "panel": true,
-                                  "head": true
-                                }
-                              },
-                              "size": {
-                                "px": 127
-                              }
-                            },
-                            {
-                              "id": "tasks-thread-body",
-                              "type": "stack",
-                              "children": [
-                                {
-                                  "id": "tasks-thread-chat",
-                                  "type": "block",
-                                  "content": {
-                                    "mod": "chat",
-                                    "props": {
-                                      "panel": true
-                                    }
-                                  }
-                                },
-                                {
-                                  "id": "tasks-thread-term",
-                                  "type": "block",
-                                  "content": {
-                                    "terminal": "t34"
-                                  }
-                                },
-                                {
-                                  "id": "tasks-thread-files",
-                                  "type": "block",
-                                  "content": {
-                                    "mod": "task-files"
-                                  }
-                                },
-                                {
-                                  "id": "tasks-thread-changes",
-                                  "type": "block",
-                                  "content": {
-                                    "mod": "task-changes"
-                                  }
-                                },
-                                {
-                                  "id": "tasks-thread-pr",
-                                  "type": "block",
-                                  "content": {
-                                    "mod": "task-pr"
-                                  }
-                                },
-                                {
-                                  "id": "tasks-thread-browser",
-                                  "type": "column",
-                                  "children": [
-                                    {
-                                      "id": "tasks-thread-browser-host",
-                                      "type": "block",
-                                      "content": {
-                                        "mod": "task-browser"
-                                      }
-                                    }
-                                  ]
-                                }
-                              ],
-                              "active": "tasks-thread-chat"
-                            }
-                          ],
-                          "background": "background",
-                          "border": {
-                            "width": 1,
-                            "color": "border"
-                          },
-                          "radius": 0,
-                          "resizable": false
-                        }
-                      ],
-                      "active": "tasks-list"
+                      "type": "block",
+                      "content": {
+                        "mod": "px-projects"
+                      }
                     },
                     {
                       "id": "artifacts",

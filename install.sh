@@ -126,7 +126,7 @@ def find(n, id):
                 if (f := find(c, id)): return f
     return None
 # The tab bar is this repo's px-tabs (Shepherdr's tabs-tasks once stood in for it: back to px-tabs when it's gone),
-# and panels whose mods are all gone (Shepherdr's Tasks and Artifacts) go with them.
+# and Shepherdr's Artifacts panel goes when its mod is gone. (Tasks is ours: mods/px-projects over shp.)
 def drop(n, ids):
     if isinstance(n, dict):
         for key in ("children", "floating"):
@@ -145,7 +145,7 @@ for name in ("workbench", "fortress", "pixel"):
         if tabs and sh3 and (tabs.get("content") or {}).get("mod") == "px-tabs": tabs["content"]["mod"] = "tabs-tasks"
         if tabs and not sh3 and (tabs.get("content") or {}).get("mod") == "tabs-tasks": tabs["content"]["mod"] = "px-tabs"
         strip(d)
-        drop(d, {i for i, m in (("tasks", "tasks"), ("artifacts", "artifacts")) if not os.path.isdir(f"{home}/mods/{m}")})
+        drop(d, {"artifacts"} if not os.path.isdir(f"{home}/mods/artifacts") else set())
         json.dump(d, open(p, "w"), indent=2)
 # Shepherdr's own layout: this repo's panels (PR, Reviews, Docs, Time), Desk, usage and sysmon, as in workbench.
 p = f"{home}/layouts/shepherdr.json"
@@ -201,6 +201,14 @@ PY3
 fi
 
 L="$REPO/linux"; M="$REPO/macos"; O="$REPO/omarchy"
+echo "== simple-herdr-projects (shp): the Tasks panel and the Monitor read it"
+# Built from a checkout beside this repo (github.com/makefunstuff/simple-herdr-projects) when there is one.
+SHP_SRC="$(dirname "$REPO")/simple-herdr-projects"
+if [ -f "$SHP_SRC/go.mod" ] && command -v go >/dev/null; then
+  mkdir -p "$HOME/.local/bin" && (cd "$SHP_SRC" && go build -o "$HOME/.local/bin/shp" .) && echo "  shp: built from $SHP_SRC into ~/.local/bin"
+elif command -v shp >/dev/null; then echo "  shp: $(command -v shp)"
+else echo "  shp: not installed; clone simple-herdr-projects beside this repo and run again (needs Go)"; fi
+
 echo "== herdr-doc and its Claude Code skill"
 put "$L/bin/herdr-doc" "$HOME/.local/bin/herdr-doc"; chmod +x "$HOME/.local/bin/herdr-doc"
 [ -d "$HOME/.claude" ] && put "$L/skills/herdr-doc/SKILL.md" "$HOME/.claude/skills/herdr-doc/SKILL.md"

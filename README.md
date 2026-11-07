@@ -19,6 +19,24 @@ alert sounds together (`ctrl-shift-l` cycles them).
 
 All art and sounds are original and drawn as vectors, so they stay sharp on Retina screens.
 
+**Projects: Tasks panel and Monitor** (`mods/px-projects`, over
+[simple-herdr-projects](https://github.com/makefunstuff/simple-herdr-projects), `shp`). Every machine linked to
+herdr-core, in one place:
+
+- **Tasks panel** (TASKS in the tab bar and the status bar, with how many need you): Needs you, Working, Ready,
+  Backlog and Done. A question gets a Reply line (`shp say`), a to-do gets Start, a ready task gets Reopen and Accept
+  (confirmed first: checks, then merge or PR). + adds a task to any shp space on any machine. A row opens the task's
+  space at its Chat.
+- **Monitor** (MONITOR in the status bar, or from the panel): the operations monitor. Each machine is a rack with CPU,
+  memory, disk and worker slots. Each running task is a node with its sprite, progress, step and review round, and
+  plain Herdr agents get nodes too. Under them: what waits on you, the queue with its `after`s, and a ticker of every
+  worker's step.
+- **Sidebar**: a task's space shows as the task (id, title, state light, progress) under its repo.
+- **Toasts**: once per task that comes to need you or becomes ready.
+
+`px-status` holds the only poller: `shp list --json` per machine every 3 s and `shp tick` every 10 s, so queued work
+starts. Every view reads its result, `shared("shp")`. The installer builds `shp` from a checkout beside this repo.
+
 **Task workspaces, on machines still running Shepherdr 3.x** (until simple-herdr-projects replaces it) (`bin/task-workspaces.py`, a user service: `herdr-task-workspaces`; a service and not a mod
   because the document has to be written even with no window open, and mods only draw it): each started Shepherdr 3.x
   task becomes a real Herdr workspace on its worktree, under the space of the repo it is from (the same place the

@@ -9,6 +9,26 @@ import { spaces, machines, panes, run, openOverlay, exec, hc, theme, shared, set
 const GS = () => ({ workbench: "gw", fortress: "gf" })[shared("layout")] ?? "g";
 // The id prefix bin/task-workspaces.py gives the workspaces it keeps for started tasks.
 const TASK_PREFIX = "sptask";
+// Our projects manager's tasks (shp, read by px-status into shared("shp")): each started task has its own
+// space in its worktree, which git already nests under the repo; this gives that row the task's id, state
+// and progress. Its states in the sidebar's words:
+const SHP_STATUS = { needs: "blocked", working: "working", merging: "working", ready: "ready", done: "done" };
+// Its space: the recorded workspace id (remote ones read "machine/id"), else the space in its worktree
+// or named "<ID> · <title>" (tasks imported from Shepherdr keep the space it made).
+const tail = (path) => String(path ?? "").replace(/^~|^\/(Users|home)\/[^/]+/, "");
+const sameTask = (s, task) => (task.workspace && (s.id === task.workspace || String(s.id).endsWith(`/${task.workspace}`)))
+  || (task.worktree && tail(s.folder) === tail(task.worktree)) || s.name === `${task.id} · ${task.title}`;
+function shpTasks(sp) {
+  const out = {};
+  for (const task of (shared("shp")?.places ?? []).flatMap((p) => p.tasks)) {
+    const space = sp.find((s) => (s.machine ?? null) === (task.machine ?? null) && sameTask(s, task));
+    if (!space) continue;
+    const ask = (task.asks ?? [])[0];
+    out[space.id] = { shp: true, ref: task.id, title: task.title, status: SHP_STATUS[task.status] ?? "idle", progress: task.progress,
+      left: task.left, doing: task.status === "needs" && ask?.text ? ask.text : task.step };
+  }
+  return out;
+}
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -98,6 +118,7 @@ export default class Spaces extends View {
   openTask(w, task) {
     run("space.select", { id: w.id });
     if (!task) return;
+    if (task.shp) { const chat = (w.tabs ?? []).find((x) => x.name === "Chat"); if (chat) run("tab.select", { id: chat.id }); return; }
     if (task.chat && task.tabs !== false) run("tab.select", { id: task.chat });
     else this.chatWanted = { id: w.id, at: Date.now() };
   }
@@ -250,14 +271,16 @@ export default class Spaces extends View {
     const sp = spaces(), ps = panes();
     const ready = (w) => this.shown.has(w.id) || where(w, ps) in this.git || Date.now() - (this.born[w.id] ??= Date.now()) > 1500;
     for (const w of sp) if (!this.shown.has(w.id) && ready(w)) this.shown.add(w.id);
-    const all = sp.map((w, i) => ({ w, i, g: this.git[where(w, ps)] ?? null, task: this.tasks[w.id] ?? null })).filter((r) => this.shown.has(r.w.id));
+    const shp = shpTasks(sp);
+    const all = sp.map((w, i) => ({ w, i, g: this.git[where(w, ps)] ?? null, task: this.tasks[w.id] ?? shp[w.id] ?? null })).filter((r) => this.shown.has(r.w.id));
     // A task's workspace never reads as a space of its own. Without a task entry (a moment before
     // the service writes one, or a space Herdr rebuilt from a leftover terminal label after a
     // window restart) it would be an orphan at the top, so it is left out until it has its task
     // row. A task row also waits for the parent space the service names: it is never top-level.
     const known = new Set(sp.map((s) => s.id));
-    const list = all.filter((r) => !r.task && !String(r.w.id).startsWith(TASK_PREFIX));
-    const tasks = all.filter((r) => r.task && known.has(r.task.parent ?? r.task.space));
+    // An shp task's space is a worktree space like any other (nested by git below), only labelled.
+    const list = all.filter((r) => r.task?.shp || (!r.task && !String(r.w.id).startsWith(TASK_PREFIX)));
+    const tasks = all.filter((r) => r.task && !r.task.shp && known.has(r.task.parent ?? r.task.space));
     const mains = new Set(list.filter((r) => r.g && !r.g.linked).map((r) => r.g.repo));
     // A task worktree whose folder git can't read (removed once its task finished) still nests under
     // its repo by path: ~/.shepherdr/worktrees/<repo>/… or ~/.herdr/worktrees/<repo>/….
@@ -431,7 +454,7 @@ export default class Spaces extends View {
   // A task workspace's line after its id: the task's title, how far it got, and its worker's words.
   taskTail(task, t) {
     const pct = typeof task.progress === "number" ? `${task.progress}%` : null;
-    const left = typeof task.left === "number" ? `~${task.left}m` : null;
+    const left = typeof task.left === "number" ? `~${task.left}m` : task.left ? String(task.left) : null;
     return h_flex().flex_1().min_w(0).gap(6).justify_end().items_center().text_size(11.5).text_color(t.dim)
       .child(div().flex_1().min_w(0).truncate().tooltip(`${task.ref} \u00b7 ${task.title}${task.doing ? ` \u00b7 ${task.doing}` : ""}`).child(task.title ?? ""))
       .when(Boolean(pct), el => el.child(div().flex_none().text_color(t.foreground).child(pct)))
