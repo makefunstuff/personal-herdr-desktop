@@ -13,6 +13,7 @@ const TASK_PREFIX = "sptask";
 // space in its worktree, which git already nests under the repo; this gives that row the task's id, state
 // and progress. Its states in the sidebar's words:
 const SHP_STATUS = { needs: "blocked", working: "working", merging: "working", ready: "ready", done: "done" };
+const openAsk = (task) => (task.asks ?? []).find((a) => !a.closed && !a.answered) ?? task.asks?.[0] ?? null;
 // Its space: the recorded workspace id (remote ones read "machine/id"), else the space in its worktree
 // or named "<ID> · <title>" (tasks imported from Shepherdr keep the space it made).
 const tail = (path) => String(path ?? "").replace(/^~|^\/(Users|home)\/[^/]+/, "");
@@ -23,7 +24,7 @@ function shpTasks(sp) {
   for (const task of (shared("shp")?.places ?? []).flatMap((p) => p.tasks)) {
     const space = sp.find((s) => (s.machine ?? null) === (task.machine ?? null) && sameTask(s, task));
     if (!space) continue;
-    const ask = (task.asks ?? [])[0];
+    const ask = openAsk(task);
     out[space.id] = { shp: true, ref: task.id, title: task.title, status: SHP_STATUS[task.status] ?? "idle", progress: task.progress,
       left: task.left, doing: task.status === "needs" && ask?.text ? ask.text : task.step };
   }
@@ -60,11 +61,11 @@ const FALLBACK = 60000;
 const MARK = { ansi6: "#22a99a", ansi3: "#e3814f", ansi4: "#5b8def", ansi5: "#8b7cf6", ansi2: "#3fae6a", ansi1: "#d9649a" };
 
 // A space speaks up only when something in it needs you.
-export function glyph(status) {
+function glyph(status) {
   return status === "blocked" || status === "done" ? "●" : "·";
 }
 
-export function tone(t, status) {
+function tone(t, status) {
   return t[status] ?? t.unknown;
 }
 

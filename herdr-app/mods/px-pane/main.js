@@ -63,7 +63,7 @@ export default class Pane extends View {
   }
 
   // Win 3.1 bevel button: white top-left, gray bottom-right, black outline.
-  box(id, glyph, onClick, tip) {
+  box(id, glyph, onClick) {
     return div().id(id).flex_none().w(20).h(20).border_1().border_color("#000000").bg("#c0c0c0")
       .on_click((_e, cx) => { cx.stop_propagation(); onClick(); })
       .child(div().size_full().flex().items_center().justify_center()
@@ -103,8 +103,8 @@ export default class Pane extends View {
         .child(this.button(t, `ph-r-${pane}`, "split-right", "pane.split", { direction: "right", pane }))
         .child(this.button(t, `ph-d-${pane}`, "split-down", "pane.split", { direction: "down", pane })))
       .child(h_flex().flex_none().gap(0).h_full().items_center().border_l(1).border_color("#000000")
-        .child(this.box(`ph-m-${pane}`, "\u25BC", () => run("tab.settle", { id: p.tab }), "Minimize"))
-        .child(this.box(`ph-z-${pane}`, p.zoomed ? "\u2666" : "\u25B2", () => run("pane.zoom", { pane }), p.zoomed ? "Restore" : "Maximize")));
+        .child(this.box(`ph-m-${pane}`, "\u25BC", () => run("tab.settle", { id: p.tab })))
+        .child(this.box(`ph-z-${pane}`, p.zoomed ? "\u2666" : "\u25B2", () => run("pane.zoom", { pane }))));
   }
 
   toChat(p, cx) {

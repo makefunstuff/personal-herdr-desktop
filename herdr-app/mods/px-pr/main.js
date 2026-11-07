@@ -1,14 +1,14 @@
 // PR: the pull request of the focused pane's branch, to read and act on its review.
 // Shows the PR (state, review decision, checks), every review comment thread (file:line, the code it is on,
 // the replies), every review with a body and every conversation comment. On each comment: reactions (posted to
-// GitHub only when clicked), "Ask agent" (sends the comment with its file, line and code to an agent in this space,
-// asking what it means; no code change) and "GitHub" (opens it). Asks gh on the pane's machine while shown,
+// GitHub only when clicked), "Ask agent" (sends the comment with its file, line and code to the agent doing the
+// PR's work, or Chores, asking what it means; no code change) and "GitHub" (opens it). Asks gh on the pane's machine while shown,
 // every 60 s; a click on the header refreshes. Reply: into a review thread, or a PR comment; posted only on Post.
 // Through gh: the person's own login and permissions.
 import * as fs from "fs/promises";
-import { View, div, svg } from "gpui-kit";
+import { View, div } from "gpui-kit";
 import { v_flex, h_flex, TextView, TextareaState, Textarea } from "gpui-base";
-import { spaces, panes, focused, exec, theme, settings, shared, setShared, agents, hc, notify, props, home, appHome, run, window } from "herdr";
+import { spaces, panes, focused, exec, theme, settings, shared, setShared, agents, hc, props, home, appHome, run, window } from "herdr";
 // The desktop's opener for links and files: open on macOS, xdg-open on Linux.
 const OPENER = () => (window()?.platform === "macos" ? "open" : "xdg-open");
 
@@ -224,13 +224,7 @@ export default class PullRequest extends View {
       .on_click((_e, cx) => { this.replyTo = on ? null : to; cx.notify(); }).child(caps("Reply"));
   }
 
-  // The agents in this space, the focused tab's first (as the Changes view picks them).
-  reviewers() {
-    const space = spaces().find((s) => s.active), tab = focused()?.tab;
-    return agents().filter((a) => a.space === space?.id).sort((a, b) => (b.tab === tab) - (a.tab === tab) || a.tab_index - b.tab_index);
-  }
-
-  ask(agent, c, hunk, cx) {
+  ask(c, hunk, cx) {
     const d = this.data; if (!d) return;
     const where = c.path ? `${c.path}:${c.line ?? c.original_line ?? "?"}` : "the PR conversation";
     const code = hunk ? `\nThe code it is on:\n\`\`\`\n${hunk.split("\n").slice(-8).join("\n")}\n\`\`\`` : "";
@@ -366,7 +360,7 @@ export default class PullRequest extends View {
 
   // One comment: author, review state, age (opens it on GitHub) and its actions on the header line; the body; reactions it has.
   comment(t, kind, c, hunk, state = null) {
-    const who = this.reviewers()[0], id = `${kind}-${c.id}`;
+    const id = `${kind}-${c.id}`;
     const has = Object.values(c.reactions ?? {}).some((n) => n > 0) || this.picking === id;
     const tone = state === "CHANGES_REQUESTED" ? t.blocked : state === "APPROVED" ? t.done : t.muted;
     return v_flex().w_full().gap(4)
@@ -378,7 +372,7 @@ export default class PullRequest extends View {
           .on_click(() => exec(OPENER(), [c.html_url]).catch(() => {})).child(ago(c.created_at ?? c.submitted_at)))
         .child(div().flex_1())
         .when(kind !== "review-body" && !has, (el) => el.child(this.link(t, `re-${id}-add`, "React", (cx) => { this.picking = id; cx.notify(); })))
-        .child(this.link(t, `ask-${id}`, "Ask", (cx) => this.ask(who, c, hunk, cx))))
+        .child(this.link(t, `ask-${id}`, "Ask", (cx) => this.ask(c, hunk, cx))))
       .when(Boolean((c.body || "").trim()), (el) => el.child(div().w_full().text_size(12).text_color(t.foreground).child(TextView.markdown(`md-${id}`, c.body).selectable(true))))
       .when(kind !== "review-body" && has, (el) => el.child(this.reactions(t, kind, c)));
   }

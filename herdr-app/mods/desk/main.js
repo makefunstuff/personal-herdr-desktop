@@ -155,13 +155,13 @@ export default class Desk extends View {
 
   async addNote() {
     const text = this.input.value().trim(); if (!text) return;
-    const day = ymd(new Date()), now = new Date();
+    const day = this.day, now = new Date();
     const box = this.boxOf(text);
     const line = box ? `- [${box.done ? "x" : " "}] ${box.text}` : `- ${pad(now.getHours())}:${pad(now.getMinutes())} ${text}`;
     try {
       let cur = ""; try { cur = await fs.readFile(`${NOTES()}/${day}.md`, "utf8"); } catch { cur = `# ${day}\n`; }
       await this.writeNote(day, (cur.endsWith("\n") ? cur : cur + "\n") + line + "\n");
-      this.input.set_value(""); this.err = null; this.day = day;
+      this.input.set_value(""); this.err = null;
     } catch (e) { this.err = `Note not saved: ${e.message}`; }
     await this.loadNotes();
   }
@@ -235,15 +235,13 @@ export default class Desk extends View {
   notesView(t) {
     const lines = (this.note ?? "").split("\n");
     const rows = [];
-    // Long words (paths, identifiers) wrap instead of running off the edge: a break chance every 18 characters.
-    const soft = (x) => String(x);
     // Hover shows the note's ×; a click on its words edits it.
     const row = (n, l, lead, words, dim, strike) => h_flex().id(`nl-${n}`).w_full().gap(8).px(4).py(3).items_start()
       .when(this.hoverNote === n, (e) => e.bg(t.hover))
       .on_hover((h, cx) => { if (h) this.hoverNote = n; else if (this.hoverNote === n) this.hoverNote = null; cx.notify(); })
       .child(lead)
       .child(div().id(`nw-${n}`).flex_1().min_w(0).text_size(12).cursor_text().text_color(dim ? t.dim : t.foreground).when(strike, (e) => e.line_through())
-        .on_click((_e, cx) => this.startEdit(n, cx)).child(soft(words)))
+        .on_click((_e, cx) => this.startEdit(n, cx)).child(String(words)))
       .child(div().id(`nx-${n}`).w(14).flex_none().text_center().text_size(12).cursor_pointer()
         .text_color(this.hoverNote === n ? t.dim : t.background).hover((s) => s.text_color(t.blocked))
         .on_click((_e, cx) => { cx.stop_propagation(); cx.spawn(async (cx) => this.rewriteLine(n, l, null, cx)); }).child("×"));

@@ -302,9 +302,9 @@ export default class Agents extends View {
     setAgentOrder(ordered.map((a) => a.address));
     const number = new Map(ordered.map((a, i) => [a.address, i + 1]));
 
-    const withKids = (a, i) => {
+    const withKids = (a) => {
       const subs = collapsed ? [] : this.tree(all, a.address);
-      const r = row(a, i, subs);
+      const r = row(a, subs);
       if (this.folded.has(a.address)) return [r];
       return [r, ...subs.map((s) => this.subRow(t, s, shown, byPriority))];
     };
@@ -351,7 +351,7 @@ export default class Agents extends View {
       if (detail.get(a.address) == null && seen[`${a.space_name}\u0000`] > 1) detail.set(a.address, label(a));
     }
 
-    const row = (a, i, subs = []) => {
+    const row = (a, subs = []) => {
       const pic = icon(a.program, 16, t.foreground);
       // A task agent reads as its task (PHD-1 and its title), the space it belongs to after it.
       const more = a.task ? a.space_name : detail.get(a.address);
