@@ -126,6 +126,17 @@ Only `*.js`; SVG and JSON are assets, not code.
 `bin/task-workspaces.py` (665) and `bin/shepherdr-spaces.py` (189) are the
 Shepherdr-specific services; they are only touched where a bug requires it.
 
+## Checks
+
+- `node --experimental-vm-modules herdr-app/tests/fixes.mjs` loads the real
+  `desk`, `px-worktree` and `px-sysmon` source with stubs and checks the three
+  fixed behaviours: the past-day note file, the main-checkout guard (no
+  `space.close`, no remove), and Linux on the first sample.
+- `herdr-app check <mod>` for all 27 mods.
+- `~/.config/herdr-app/bin/sync-shared --check`.
+- Installed with `./install.sh`, then before/after screenshots of the sidebar,
+  tab bar, pane header, Monitor, Tasks, PR and Changes (proof artifact).
+
 ## What goes at the shp cutover (SHP-4/SHP-5)
 
 These parts are intentionally left alone beyond bug fixes because
