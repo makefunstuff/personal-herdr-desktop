@@ -104,6 +104,8 @@ export default class Tabs extends View {
       ["stacks", "Stacks", icon("layers"), has("stacks")],
       ["docs", "Docs", icon("file-text"), has("docs")],
       ["time", "Time", icon("clock"), has("time")],
+      // A duty checklist (a local mod where the layout has a "duty" node): how many of today's items are left.
+      ["duty", shared("duty.summary")?.left ? `Duty ${shared("duty.summary").left}` : "Duty", icon("check"), has("duty")],
       ["jira", "Jira", "mods/px-jira/g/jira.svg", enabled.includes("jira")],
       // Tasks: ours (px-projects over shp), or Shepherdr's where it still runs; then shp's beside it as Projects.
       ["tasks", needs && findNode(root, "tasks")?.content?.mod === "px-projects" ? `Tasks ${needs}` : "Tasks", icon("circle-check"), has("tasks")],
