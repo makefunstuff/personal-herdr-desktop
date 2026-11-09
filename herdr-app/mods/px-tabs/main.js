@@ -94,7 +94,7 @@ export default class Tabs extends View {
     const needs = (shared("shp")?.places ?? []).flatMap(p => p.tasks).filter(k => k.status === "needs").length;
     const has = (id) => Boolean(findNode(root, id)), icon = (n) => `mods/px-chrome/${GS()}/${n}.svg`;
     // The side panels this layout offers: Files/Changes are the welcome's choice,
-    // the rest show where the layout has their node. Tasks is ours over shp.
+    // the rest show where the layout has their node.
     const panels = [
       ["files", "Files", icon("files"), enabled.includes("files")],
       ["changes", "Changes", icon("git-compare"), enabled.includes("changes")],
@@ -105,7 +105,9 @@ export default class Tabs extends View {
       ["docs", "Docs", icon("file-text"), has("docs")],
       ["time", "Time", icon("clock"), has("time")],
       ["jira", "Jira", "mods/px-jira/g/jira.svg", enabled.includes("jira")],
-      ["tasks", needs ? `Tasks ${needs}` : "Tasks", icon("circle-check"), has("tasks")],
+      // Tasks: ours (px-projects over shp), or Shepherdr's where it still runs; then shp's beside it as Projects.
+      ["tasks", needs && findNode(root, "tasks")?.content?.mod === "px-projects" ? `Tasks ${needs}` : "Tasks", icon("circle-check"), has("tasks")],
+      ["projects", needs ? `Projects ${needs}` : "Projects", icon("circle-check"), has("projects")],
       ["artifacts", "Artifacts", icon("layers"), has("artifacts")],
     ];
     this.syncPanel(space, panel, body, enabled);
